@@ -38,8 +38,28 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Restore persistent signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AMPTV_KEYSTORE_BASE64 }}
+          AMPTV_KEYSTORE_PASSWORD: ${{ secrets.AMPTV_KEYSTORE_PASSWORD }}
+          AMPTV_KEY_ALIAS: ${{ secrets.AMPTV_KEY_ALIAS }}
+          AMPTV_KEY_PASSWORD: ${{ secrets.AMPTV_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          test -n "$AMPTV_KEYSTORE_PASSWORD"
+          test -n "$AMPTV_KEY_ALIAS"
+          test -n "$AMPTV_KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/amptv.jks"
+          chmod 600 "$RUNNER_TEMP/amptv.jks"
+          echo "AMPTV_SIGNING_STORE_FILE=$RUNNER_TEMP/amptv.jks" >> "$GITHUB_ENV"
+          echo "AMPTV_KEYSTORE_PASSWORD=$AMPTV_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "AMPTV_KEY_ALIAS=$AMPTV_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "AMPTV_KEY_PASSWORD=$AMPTV_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
+      - name: Verify APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
