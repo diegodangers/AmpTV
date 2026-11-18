@@ -37,7 +37,39 @@ fun AmpTVScreen() {
     var selected by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
-    var authStatus by remember { mutableStateOf("Spotify not connected") }
+    val api = remember { SpotifyApi(auth) }
+    var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
+    var playlists by remember { mutableStateOf<List<SpotifyPlaylist>>(emptyList()) }
+    var tracks by remember { mutableStateOf<List<SpotifyTrack>>(emptyList()) }
+    var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reload) {
+        if (auth.hasSession()) {
+            loading = true
+            try {
+                val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    api.profileName() to api.playlists()
+                }
+                authStatus = "Connected: ${loaded.first}"
+                playlists = loaded.second
+            } catch (e: Exception) {
+                authStatus = "Spotify: ${e.message ?: "Request failed"}"
+            } finally { loading = false }
+        }
+    }
+    LaunchedEffect(currentPlaylist) {
+        val p = currentPlaylist
+        if (p != null) {
+            loading = true
+            tracks = emptyList()
+            try {
+                tracks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { api.tracks(p.id) }
+            } catch (e: Exception) {
+                authStatus = "Playlist error: ${e.message ?: "Request failed"}"
+            } finally { loading = false }
+        }
+    }
     val demoTracks = remember { listOf("01. Welcome to AmpTV", "02. Connect your Spotify account", "03. Choose a Spotify Connect device", "04. Start your playlist") }
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -48,15 +80,15 @@ fun AmpTVScreen() {
         Column(Modifier.fillMaxWidth().border(3.dp, Color.White).background(silver).padding(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.weight(1f).background(screen).padding(18.dp)) {
-                    Text("AMP TV  --  NOT CONNECTED", color = green, fontFamily = FontFamily.Monospace, fontSize = 21.sp)
+                    Text("AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 21.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("00:00     128 kbps     STEREO", color = green, fontFamily = FontFamily.Monospace, fontSize = 17.sp)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("SPOTIFY CONTROLLER", color = navy, fontWeight = FontWeight.Bold)
                     Text(authStatus, color = Color.DarkGray)
-                    Button(onClick = { auth.signIn { authStatus = it } }) {
-                        Text("CONNECT SPOTIFY")
+                    Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }) {
+                        Text(if (auth.hasSession()) "RECONNECT" else "CONNECT SPOTIFY")
                     }
                     Text("Client: ${BuildConfig.SPOTIFY_CLIENT_ID.take(8)}…", color = Color.DarkGray, fontSize = 12.sp)
                 }
@@ -69,9 +101,15 @@ fun AmpTVScreen() {
             }
         }
         Column(Modifier.fillMaxWidth().weight(1f).border(3.dp, Color.White).background(silver).padding(10.dp)) {
-            Text("PLAYLIST EDITOR", color = Color.White, modifier = Modifier.fillMaxWidth().background(navy).padding(8.dp), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Text(if (currentPlaylist == null) "PLAYLISTS" else "TRACKS: ${currentPlaylist!!.name}", color = Color.White, modifier = Modifier.fillMaxWidth().background(navy).padding(8.dp), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            if (currentPlaylist != null) {
+                Button(onClick = { currentPlaylist = null; tracks = emptyList(); selected = 0 }) { Text("BACK TO PLAYLISTS") }
+            }
+            if (loading) Text("Loading Spotify…", color = navy)
+            val entries = if (currentPlaylist != null) tracks.map { "${it.name} — ${it.artist}" }
+                          else if (auth.hasSession()) playlists.map { it.name } else demoTracks
             LazyColumn(Modifier.fillMaxSize().background(screen).padding(8.dp)) {
-                itemsIndexed(demoTracks) { index, track ->
+                itemsIndexed(entries) { index, track ->
                     var focused by remember { mutableStateOf(false) }
                     val highlighted = focused || selected == index
                     Text(
@@ -82,7 +120,7 @@ fun AmpTVScreen() {
                             .onFocusChanged { focused = it.isFocused }
                             .background(if (highlighted) Color(0xFF1749B5) else screen)
                             .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent)
-                            .clickable { selected = index }
+                            .clickable { selected = index; if (currentPlaylist == null && auth.hasSession() && index < playlists.size) currentPlaylist = playlists[index] }
                             .padding(10.dp),
                         fontSize = 19.sp,
                         fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
@@ -91,6 +129,6 @@ fun AmpTVScreen() {
                 }
             }
         }
-        Text("MVP 0.1 • D-PAD PLAYLIST NAVIGATION • SPOTIFY AUTH COMING NEXT", color = silver, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+        Text("MVP 0.2 • SPOTIFY PLAYLIST BROWSER • PLAYBACK COMING NEXT", color = silver, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
     }
 }
