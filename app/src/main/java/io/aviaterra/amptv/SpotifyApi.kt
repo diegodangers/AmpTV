@@ -15,7 +15,18 @@ class SpotifyApi(private val auth: SpotifyAuth) {
             connection.readTimeout = 15000
             connection.setRequestProperty("Authorization", "Bearer ${auth.validToken()}")
             if (connection.responseCode !in 200..299) {
-                throw IllegalStateException("Spotify API HTTP ${connection.responseCode}")
+                val status = connection.responseCode
+                val body = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                val details = try {
+                    val error = JSONObject(body).opt("error")
+                    when (error) {
+                        is JSONObject -> error.optString("message", error.optString("reason", ""))
+                        is String -> error
+                        else -> ""
+                    }
+                } catch (_: Exception) { "" }
+                val path = URL(url).path
+                throw IllegalStateException("HTTP $status at $path" + if (details.isNotBlank()) ": ${details.take(160)}" else "")
             }
             return JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
         } finally { connection.disconnect() }
