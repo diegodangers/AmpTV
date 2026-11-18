@@ -36,6 +36,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
 
     fun playlists(): List<SpotifyPlaylist> {
         val result = mutableListOf<SpotifyPlaylist>()
+        val userId = get("https://api.spotify.com/v1/me").getString("id")
         var next: String? = "https://api.spotify.com/v1/me/playlists?limit=50"
         var pages = 0
         while (next != null && pages++ < 10) {
@@ -44,7 +45,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
             for (i in 0 until items.length()) {
                 val p = items.optJSONObject(i) ?: continue
                 val id = p.optString("id")
-                if (id.isNotBlank()) {
+                if (id.isNotBlank() && p.optJSONObject("owner")?.optString("id") == userId) {
                     result.add(SpotifyPlaylist(id, p.optString("name", "Untitled playlist"),
                         p.optJSONObject("tracks")?.optInt("total") ?: p.optJSONObject("items")?.optInt("total") ?: 0))
                 }
