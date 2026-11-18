@@ -2,6 +2,11 @@ package io.aviaterra.amptv
 
 import android.os.Bundle
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +51,16 @@ fun AmpTVScreen() {
     var device by remember { mutableStateOf<SpotifyDevice?>(null) }
     var playbackStatus by remember { mutableStateOf("Playback not started") }
     var playbackBusy by remember { mutableStateOf(false) }
+    var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
+    var visualTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(auth.hasSession()) {
+        if (auth.hasSession()) while (true) {
+            try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() } }
+            catch (_: Exception) { }
+            delay(4000)
+        }
+    }
+    LaunchedEffect(Unit) { while (true) { delay(110); visualTick++ } }
     fun runPlayback(action: (SpotifyDevice) -> Unit) {
         if (playbackBusy) return
         playbackBusy = true
@@ -101,17 +116,31 @@ fun AmpTVScreen() {
         }
     }
     val demoTracks = remember { listOf("Connect Spotify to see your playlists") }
-    var showDevices by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.3.1  •  CLASSIC SKIN", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.4.0  •  CLASSIC SKIN", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
-                Text(currentPlaylist?.name ?: "AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 19.sp, maxLines = 1)
-                Text(playbackStatus, color = green, fontFamily = FontFamily.Monospace, fontSize = 13.sp, maxLines = 2)
+                Text(nowPlaying?.title ?: "AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 17.sp, maxLines = 1)
+                Text(nowPlaying?.artist ?: playbackStatus, color = green, fontFamily = FontFamily.Monospace, fontSize = 12.sp, maxLines = 1)
+                val position = nowPlaying?.progressMs ?: 0L
+                val duration = nowPlaying?.durationMs ?: 0L
+                Text("${position / 60000}:${(position / 1000 % 60).toString().padStart(2, '0')} / ${duration / 60000}:${(duration / 1000 % 60).toString().padStart(2, '0')}",
+                    color = green, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Canvas(Modifier.fillMaxWidth().height(19.dp)) {
+                    val tick = visualTick
+                    val bars = 28
+                    val width = size.width / (bars * 1.5f)
+                    for (i in 0 until bars) {
+                        val wave = (sin(tick * 0.37 + i * 0.82) + sin(tick * 0.21 + i * 1.39) + 2.0) / 4.0
+                        val height = if (nowPlaying?.playing == true) (size.height * (0.15 + 0.85 * wave)).toFloat() else size.height * 0.08f
+                        drawRect(green, topLeft = Offset(i * size.width / bars, size.height - height), size = Size(width, height))
+                    }
+                }
             }
             Column(Modifier.weight(1.5f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -135,33 +164,11 @@ fun AmpTVScreen() {
                             shape = RoundedCornerShape(2.dp)
                         ) { Text(label, fontSize = 13.sp) }
                     }
-                    Button(onClick = { showDevices = !showDevices },
-                        modifier = Modifier.height(38.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
-                        Text("OUTPUT", fontSize = 13.sp)
-                    }
+
                 }
-                Text("${device?.name ?: "TV not selected"}  •  $authStatus", color = navy, fontSize = 12.sp, maxLines = 1)
+                Text("${device?.name ?: "Automatic TV output"}  •  $authStatus", color = navy, fontSize = 12.sp, maxLines = 1)
                 if (!auth.hasSession()) {
                     Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
-                }
-            }
-        }
-        if (showDevices) {
-            Row(Modifier.fillMaxWidth().background(silver).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = {
-                    scope.launch {
-                        try {
-                            devices = withContext(Dispatchers.IO) { api.devices() }
-                            val tv = devices.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
-                            if (tv != null) { device = tv; playbackStatus = "TV selected: ${tv.name}" }
-                            else playbackStatus = "Open Spotify on the TV, then refresh"
-                        } catch (e: Exception) { playbackStatus = "Devices: ${e.message}" }
-                    }
-                }) { Text("REFRESH") }
-                devices.forEach { candidate ->
-                    Button(onClick = { device = candidate; playbackStatus = "Selected: ${candidate.name}"; showDevices = false }) {
-                        Text(candidate.name, maxLines = 1)
-                    }
                 }
             }
         }
