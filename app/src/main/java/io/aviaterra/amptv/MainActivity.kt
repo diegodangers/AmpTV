@@ -72,7 +72,7 @@ fun AmpTVScreen() {
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
-    val lyricsApi = remember { LyricsApi() }
+    val lyricsApi = remember { LyricsApi(context.applicationContext) }
     var lyrics by remember { mutableStateOf<LyricsResult?>(null) }
     var lyricsLoading by remember { mutableStateOf(false) }
     var lyricError by remember { mutableStateOf(false) }
