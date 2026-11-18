@@ -66,9 +66,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AmpTVScreen() {
-    var selected by remember { mutableIntStateOf(0) }
-    val playlistScroll = rememberLazyListState()
-    val trackScroll = rememberLazyListState()
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
@@ -78,12 +75,14 @@ fun AmpTVScreen() {
     var lyricError by remember { mutableStateOf(false) }
     var playbackSampleTime by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val scope = rememberCoroutineScope()
-    val jamImage = remember { jamQr(TEST_JAM_URL).asImageBitmap() }
     var devices by remember { mutableStateOf<List<SpotifyDevice>>(emptyList()) }
     var device by remember { mutableStateOf<SpotifyDevice?>(null) }
     var playbackStatus by remember { mutableStateOf("Playback not started") }
     var playbackBusy by remember { mutableStateOf(false) }
-    var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
+    var activeSession by remember { mutableStateOf<SpotifyPlaybackSession?>(null) }
+    var queue by remember { mutableStateOf<List<SpotifyQueueItem>>(emptyList()) }
+    var queueStatus by remember { mutableStateOf("Looking for Spotify session…") }
+    val queueScroll = rememberLazyListState()
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
     var visualTick by remember { mutableIntStateOf(0) }
     var sessionReady by remember { mutableStateOf(auth.hasSession()) }
@@ -103,9 +102,27 @@ fun AmpTVScreen() {
     }
     LaunchedEffect(sessionReady) {
         if (sessionReady) while (true) {
-            try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() }; playbackSampleTime = SystemClock.elapsedRealtime() }
-            catch (_: Exception) { }
+            try {
+                val snapshot = withContext(Dispatchers.IO) { api.playbackSession() }
+                activeSession = snapshot
+                nowPlaying = snapshot?.track
+                playbackSampleTime = SystemClock.elapsedRealtime()
+                queueStatus = if (snapshot == null) "No active Spotify session" else
+                    "Spotify on ${snapshot.device?.name ?: "unknown device"}"
+            } catch (e: Exception) {
+                queueStatus = "Session unavailable: ${e.message}"
+            }
             delay(4000)
+        }
+    }
+    LaunchedEffect(sessionReady) {
+        if (sessionReady) while (true) {
+            try {
+                queue = withContext(Dispatchers.IO) { api.queue() }
+            } catch (e: Exception) {
+                queueStatus = "Queue unavailable: ${e.message}"
+            }
+            delay(12000)
         }
     }
     LaunchedEffect(nowPlaying?.title, nowPlaying?.artist, nowPlaying?.album, nowPlaying?.durationMs) {
@@ -122,83 +139,69 @@ fun AmpTVScreen() {
     LaunchedEffect(Unit) { while (true) { delay(110); visualTick++ } }
     val livePosition = (nowPlaying?.progressMs ?: 0L) +
         if (nowPlaying?.playing == true) (SystemClock.elapsedRealtime() - playbackSampleTime).coerceAtLeast(0L) else 0L
-    fun runPlayback(action: (SpotifyDevice) -> Unit) {
+    fun runPlayback(action: (String) -> Unit) {
         if (playbackBusy) return
-        val listState = if (currentPlaylist != null) trackScroll else playlistScroll
-        val view = currentPlaylist?.id
-        val savedIndex = listState.firstVisibleItemIndex
-        val savedOffset = listState.firstVisibleItemScrollOffset
+        val id = activeSession?.device?.id
+        if (id.isNullOrBlank()) {
+            playbackStatus = "No active Spotify device"
+            return
+        }
+        playbackBusy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { action(id) }
+                playbackStatus = "Command sent"
+                activeSession = withContext(Dispatchers.IO) { api.playbackSession() }
+                nowPlaying = activeSession?.track
+                queue = withContext(Dispatchers.IO) { api.queue() }
+                playbackSampleTime = SystemClock.elapsedRealtime()
+            } catch (e: Exception) {
+                playbackStatus = "Playback error: ${e.message ?: "Request failed"}"
+            } finally { playbackBusy = false }
+        }
+    }
+    fun transferToTv() {
+        if (playbackBusy) return
         playbackBusy = true
         scope.launch {
             try {
                 val available = withContext(Dispatchers.IO) { api.devices() }
                 devices = available
-                val chosen = available.firstOrNull { it.id == device?.id }
-                    ?: available.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
-                if (chosen == null) {
-                    playbackStatus = if (available.isEmpty()) "No devices: open Spotify on the Onn TV"
-                        else "Select your TV below before playing"
+                val target = available.firstOrNull {
+                    it.name.contains("onn", true) || it.name.contains("google tv", true)
+                } ?: throw IllegalStateException("Onn TV not available in Spotify Connect; open Spotify on the TV")
+                if (target.id == activeSession?.device?.id) {
+                    playbackStatus = "Already playing on ${target.name}"
                 } else {
-                    device = chosen
-                    withContext(Dispatchers.IO) { action(chosen) }
-                    playbackStatus = "Sent to ${chosen.name}"
+                    withContext(Dispatchers.IO) {
+                        api.transferPlayback(target.id, activeSession?.track?.playing == true)
+                    }
+                    playbackStatus = "Transfer requested to ${target.name}"
+                    delay(1500)
+                    activeSession = withContext(Dispatchers.IO) { api.playbackSession() }
+                    nowPlaying = activeSession?.track
+                    playbackSampleTime = SystemClock.elapsedRealtime()
+                    if (activeSession?.device?.id != target.id) playbackStatus = "Transfer pending; check Spotify on TV"
                 }
             } catch (e: Exception) {
-                playbackStatus = "Playback error: ${e.message ?: "Request failed"}"
-            } finally {
-                playbackBusy = false
-                if (currentPlaylist?.id == view &&
-                    (listState.firstVisibleItemIndex != savedIndex ||
-                     listState.firstVisibleItemScrollOffset != savedOffset)) {
-                    listState.scrollToItem(savedIndex, savedOffset)
-                }
-            }
+                playbackStatus = "Transfer error: ${e.message ?: "Request failed"}"
+            } finally { playbackBusy = false }
         }
     }
     var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
-    var playlists by remember { mutableStateOf<List<SpotifyPlaylist>>(emptyList()) }
-    var tracks by remember { mutableStateOf<List<SpotifyTrack>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
         if (auth.hasSession()) {
-            loading = true
-            try {
-                val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    api.profileName() to api.playlists()
-                }
-                authStatus = "Ready"
-                playlists = loaded.second
-                sessionReady = true
-            } catch (e: Exception) {
-                authStatus = "Spotify: ${e.message ?: "Request failed"}"
-            } finally { loading = false }
+            sessionReady = true
+            authStatus = "Ready"
         }
     }
-    LaunchedEffect(currentPlaylist) {
-        val p = currentPlaylist
-        if (p != null) {
-            loading = true
-            tracks = emptyList()
-            try {
-                tracks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { api.tracks(p.id) }
-            } catch (e: Exception) {
-                authStatus = "Playlist error: ${e.message ?: "Request failed"}"
-            } finally { loading = false }
-        }
-    }
-    fun playSelectedTrack(index: Int) {
-        val playlist = currentPlaylist ?: return
-        selected = index
-        runPlayback { output -> api.play(playlist.id, output.id, tracks.getOrNull(index)?.uri) }
-    }
-    val demoTracks = remember { listOf("Connect Spotify to see your playlists") }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.5.2  •  NAV FIX", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.6  •  QUEUE", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -227,10 +230,10 @@ fun AmpTVScreen() {
                         Button(
                             onClick = {
                                 when (index) {
-                                    0 -> runPlayback { api.previous(it.id) }
-                                    1 -> runPlayback { api.resume(it.id) }
-                                    2 -> runPlayback { api.pause(it.id) }
-                                    3 -> runPlayback { api.next(it.id) }
+                                    0 -> runPlayback { api.previous(it) }
+                                    1 -> runPlayback { api.resume(it) }
+                                    2 -> runPlayback { api.pause(it) }
+                                    3 -> runPlayback { api.next(it) }
                                 }
                             },
                             enabled = auth.hasSession() && !playbackBusy,
@@ -246,10 +249,14 @@ fun AmpTVScreen() {
                     Button(onClick = { auth.signIn({ authStatus = it }, { sessionReady = true; reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
                 }
             }
-            Column(Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(bitmap = jamImage, contentDescription = "Join Spotify Jam QR",
-                    modifier = Modifier.size(70.dp).background(Color.White).padding(2.dp))
-                Text("JOIN JAM", color = navy, fontSize = 10.sp)
+            Column(Modifier.width(180.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(activeSession?.device?.name ?: "NO ACTIVE DEVICE", color = navy, fontSize = 12.sp, maxLines = 1)
+                Button(onClick = { transferToTv() }, enabled = sessionReady && !playbackBusy,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)) {
+                    Text("TRANSFER TO TV", fontSize = 12.sp)
+                }
+                Text(playbackStatus, color = navy, fontSize = 10.sp, maxLines = 2)
             }
         }
         Column(Modifier.fillMaxWidth().weight(1f).border(2.dp, Color.White).background(silver).padding(6.dp)) {
@@ -286,43 +293,19 @@ fun AmpTVScreen() {
         }
             }
         Column(Modifier.weight(1.25f).fillMaxHeight().border(2.dp, Color.White).background(silver).padding(6.dp)) {
-            Row(Modifier.fillMaxWidth().background(navy).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (currentPlaylist == null) "PLAYLISTS  (${playlists.size})" else "TRACKS  •  ${currentPlaylist!!.name}",
-                    color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1,
-                    modifier = Modifier.weight(1f))
-                if (currentPlaylist != null) {
-                    Button(onClick = { currentPlaylist = null; tracks = emptyList(); selected = 0 }, modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)) { Text("BACK", fontSize = 13.sp) }
+            Text("SPOTIFY QUEUE  •  ${queue.size} UPCOMING",
+                modifier = Modifier.fillMaxWidth().background(navy).padding(6.dp),
+                color = Color.White, fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(queueStatus, color = navy, fontSize = 12.sp, modifier = Modifier.padding(5.dp))
+            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp), state = queueScroll) {
+                itemsIndexed(queue, key = { index, item -> "${item.uri}-$index" }) { index, item ->
+                    Text("${index + 1}. ${item.title} — ${item.artist}",
+                        color = green, fontSize = 19.sp, fontFamily = FontFamily.Monospace,
+                        maxLines = 1, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
                 }
             }
-            if (loading) Text("Loading Spotify…", color = navy)
-            val entries = if (currentPlaylist != null) tracks.map { "${it.name} — ${it.artist}" }
-                else if (auth.hasSession()) playlists.map { it.name } else demoTracks
-            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp),
-                state = if (currentPlaylist == null) playlistScroll else trackScroll) {
-                itemsIndexed(entries, key = { index, _ ->
-                    if (currentPlaylist == null) "playlist-$index" else "track-${currentPlaylist!!.id}-$index"
-                }) { index, entry ->
-                    var focused by remember { mutableStateOf(false) }
-                    val highlighted = focused || selected == index
-                    Text(entry, color = if (highlighted) Color.White else green,
-                        modifier = Modifier.fillMaxWidth()
-                            .onFocusChanged { focused = it.isFocused }
-                            .background(if (highlighted) Color(0xFF1749B5) else screen)
-                            .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent)
-                            .clickable {
-                                if (currentPlaylist == null && auth.hasSession() && index < playlists.size) {
-                                    currentPlaylist = playlists[index]
-                                    selected = 0
-                                } else if (currentPlaylist != null && index < tracks.size) {
-                                    playSelectedTrack(index)
-                                }
-                            }
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                        fontSize = 20.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
-                }
-            }
-        }        }
+        }
 
     }
 }
