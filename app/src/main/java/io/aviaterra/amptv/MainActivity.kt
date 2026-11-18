@@ -1,6 +1,7 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -34,6 +35,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AmpTVScreen() {
     var selected by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val auth = remember { SpotifyAuth(context.applicationContext) }
+    var authStatus by remember { mutableStateOf("Spotify not connected") }
     val demoTracks = remember { listOf("01. Welcome to AmpTV", "02. Connect your Spotify account", "03. Choose a Spotify Connect device", "04. Start your playlist") }
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -50,7 +54,10 @@ fun AmpTVScreen() {
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("SPOTIFY CONTROLLER", color = navy, fontWeight = FontWeight.Bold)
-                    Text("Demo interface • No account linked", color = Color.DarkGray)
+                    Text(authStatus, color = Color.DarkGray)
+                    Button(onClick = { auth.signIn { authStatus = it } }) {
+                        Text("CONNECT SPOTIFY")
+                    }
                     Text("Client: ${BuildConfig.SPOTIFY_CLIENT_ID.take(8)}…", color = Color.DarkGray, fontSize = 12.sp)
                 }
             }
