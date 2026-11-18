@@ -7,7 +7,7 @@ import java.net.URL
 data class SpotifyPlaylist(val id: String, val name: String, val total: Int)
 data class SpotifyTrack(val name: String, val artist: String, val album: String, val uri: String)
 
-data class NowPlaying(val title: String, val artist: String, val progressMs: Long, val durationMs: Long, val playing: Boolean)
+data class NowPlaying(val title: String, val artist: String, val progressMs: Long, val durationMs: Long, val playing: Boolean, val album: String = "")
 
 data class SpotifyDevice(val id: String, val name: String, val active: Boolean)
 
@@ -50,7 +50,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                 artists?.optJSONObject(it)?.optString("name")
             }.joinToString(", ")
             return NowPlaying(item.optString("name", "Unknown track"), artist,
-                data.optLong("progress_ms"), item.optLong("duration_ms"), data.optBoolean("is_playing"))
+                data.optLong("progress_ms"), item.optLong("duration_ms"), data.optBoolean("is_playing"), item.optJSONObject("album")?.optString("name") ?: "")
         } finally { connection.disconnect() }
     }
 
