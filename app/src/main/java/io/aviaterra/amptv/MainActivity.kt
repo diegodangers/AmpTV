@@ -61,6 +61,7 @@ fun AmpTVScreen() {
     var playbackBusy by remember { mutableStateOf(false) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
     var visualTick by remember { mutableIntStateOf(0) }
+    var sessionReady by remember { mutableStateOf(auth.hasSession()) }
     val spectrum = remember { AudioSpectrum() }
     var fftStatus by remember { mutableStateOf("FFT not tested") }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -111,7 +112,6 @@ fun AmpTVScreen() {
     var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
-    var sessionReady by remember { mutableStateOf(auth.hasSession()) }
     LaunchedEffect(reload) {
         if (auth.hasSession()) {
             loading = true
