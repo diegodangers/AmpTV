@@ -13,7 +13,7 @@ data class NowPlaying(val title: String, val artist: String, val progressMs: Lon
 data class SpotifyDevice(val id: String, val name: String, val active: Boolean)
 
 
-data class SpotifyPlaybackSession(val device: SpotifyDevice?, val track: NowPlaying?)
+data class SpotifyPlaybackSession(val device: SpotifyDevice?, val track: NowPlaying?, val shuffle: Boolean?)
 data class SpotifyQueueItem(val title: String, val artist: String, val uri: String)
 
 class SpotifyApi(private val auth: SpotifyAuth) {
@@ -100,8 +100,12 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                 NowPlaying(it.optString("name"), artist, data.optLong("progress_ms"), it.optLong("duration_ms"),
                     data.optBoolean("is_playing"), it.optJSONObject("album")?.optString("name") ?: "")
             }
-            return SpotifyPlaybackSession(device, track)
+            return SpotifyPlaybackSession(device, track, if (data.has("shuffle_state") && !data.isNull("shuffle_state")) data.optBoolean("shuffle_state") else null)
         } finally { connection.disconnect() }
+    }
+
+    fun setShuffle(enabled: Boolean, deviceId: String) {
+        request("PUT", "me/player/shuffle?state=$enabled&device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
     }
 
     fun queue(): List<SpotifyQueueItem> {
