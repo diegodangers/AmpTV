@@ -188,6 +188,30 @@ fun AmpTVScreen() {
             } finally { playbackBusy = false }
         }
     }
+    fun shuffleLikedSongs() {
+        if (playbackBusy || activeSession != null) return
+        playbackBusy = true
+        scope.launch {
+            try {
+                val available = withContext(Dispatchers.IO) { api.devices() }
+                val target = available.firstOrNull {
+                    it.name.contains("onn", true) || it.name.contains("google tv", true)
+                } ?: throw IllegalStateException("Open Spotify on the Onn TV first")
+                val uri = withContext(Dispatchers.IO) { api.randomLikedTrack() }
+                withContext(Dispatchers.IO) { api.playTrack(target.id, uri) }
+                playbackStatus = "Playing random Liked Song on ${target.name}"
+                delay(1200)
+                activeSession = withContext(Dispatchers.IO) { api.playbackSession() }
+                nowPlaying = activeSession?.track
+                playbackSampleTime = SystemClock.elapsedRealtime()
+                queue = withContext(Dispatchers.IO) { api.queue() }
+            } catch (e: Exception) {
+                playbackStatus = if (e.message?.contains("403") == true)
+                    "Liked Songs permission denied: reconnect Spotify to authorize library access"
+                else "Liked Songs: ${e.message ?: "Request failed"}"
+            } finally { playbackBusy = false }
+        }
+    }
     var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
@@ -298,6 +322,20 @@ fun AmpTVScreen() {
                 color = Color.White, fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text(queueStatus, color = navy, fontSize = 12.sp, modifier = Modifier.padding(5.dp))
+            if (activeSession == null && sessionReady) {
+                Button(onClick = { shuffleLikedSongs() }, enabled = !playbackBusy,
+                    modifier = Modifier.fillMaxWidth().padding(6.dp)) {
+                    Text("SHUFFLE LIKED SONGS")
+                }
+                Text(playbackStatus, color = navy, fontSize = 12.sp, modifier = Modifier.padding(5.dp))
+                Button(onClick = {
+                    auth.signOut()
+                    sessionReady = false
+                    auth.signIn({ authStatus = it }, { sessionReady = true; reload++ })
+                }, modifier = Modifier.padding(6.dp)) {
+                    Text("REAUTHORIZE SPOTIFY", fontSize = 11.sp)
+                }
+            }
             LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp), state = queueScroll) {
                 itemsIndexed(queue, key = { index, item -> "${item.uri}-$index" }) { index, item ->
                     Text("${index + 1}. ${item.title} — ${item.artist}",
