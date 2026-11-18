@@ -5,7 +5,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class SpotifyPlaylist(val id: String, val name: String, val total: Int)
-data class SpotifyTrack(val name: String, val artist: String, val album: String)
+data class SpotifyTrack(val name: String, val artist: String, val album: String, val uri: String)
 
 data class NowPlaying(val title: String, val artist: String, val progressMs: Long, val durationMs: Long, val playing: Boolean)
 
@@ -64,9 +64,9 @@ class SpotifyApi(private val auth: SpotifyAuth) {
         }
     }
 
-    fun play(playlistId: String, deviceId: String, offset: Int = 0) {
+    fun play(playlistId: String, deviceId: String, trackUri: String? = null) {
         val payload = JSONObject().put("context_uri", "spotify:playlist:$playlistId")
-        if (offset > 0) payload.put("offset", JSONObject().put("position", offset))
+        if (trackUri != null) payload.put("offset", JSONObject().put("uri", trackUri))
         request("PUT", "me/player/play?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}", payload.toString())
     }
 
@@ -150,7 +150,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                     artists.optJSONObject(j)?.optString("name")?.let { names.add(it) }
                 }
                 result.add(SpotifyTrack(track.optString("name", "Unknown track"),
-                    names.joinToString(", "), track.optJSONObject("album")?.optString("name") ?: ""))
+                    names.joinToString(", "), track.optJSONObject("album")?.optString("name") ?: "", track.optString("uri"))
             }
             next = response.optString("next").takeIf { it.startsWith("https://api.spotify.com/") }
         }
