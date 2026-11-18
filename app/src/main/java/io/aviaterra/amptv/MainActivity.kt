@@ -1,6 +1,9 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +41,33 @@ fun AmpTVScreen() {
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
+    val scope = rememberCoroutineScope()
+    var devices by remember { mutableStateOf<List<SpotifyDevice>>(emptyList()) }
+    var device by remember { mutableStateOf<SpotifyDevice?>(null) }
+    var playbackStatus by remember { mutableStateOf("Playback not started") }
+    var playbackBusy by remember { mutableStateOf(false) }
+    fun runPlayback(action: (SpotifyDevice) -> Unit) {
+        if (playbackBusy) return
+        playbackBusy = true
+        scope.launch {
+            try {
+                val available = withContext(Dispatchers.IO) { api.devices() }
+                devices = available
+                val chosen = available.firstOrNull { it.id == device?.id }
+                    ?: available.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
+                if (chosen == null) {
+                    playbackStatus = if (available.isEmpty()) "No devices: open Spotify on the Onn TV"
+                        else "Select your TV below before playing"
+                } else {
+                    device = chosen
+                    withContext(Dispatchers.IO) { action(chosen) }
+                    playbackStatus = "Sent to ${chosen.name}"
+                }
+            } catch (e: Exception) {
+                playbackStatus = "Playback error: ${e.message ?: "Request failed"}"
+            } finally { playbackBusy = false }
+        }
+    }
     var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>>(emptyList()) }
     var tracks by remember { mutableStateOf<List<SpotifyTrack>>(emptyList()) }
@@ -75,7 +105,7 @@ fun AmpTVScreen() {
         Row(Modifier.fillMaxWidth().background(navy).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.1.0  •  CLASSIC SKIN", color = silver, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+            Text("0.3.0  •  CLASSIC SKIN", color = silver, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
         }
         Column(Modifier.fillMaxWidth().border(3.dp, Color.White).background(silver).padding(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -90,13 +120,42 @@ fun AmpTVScreen() {
                     Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }) {
                         Text(if (auth.hasSession()) "RECONNECT" else "CONNECT SPOTIFY")
                     }
-                    Text("Client: ${BuildConfig.SPOTIFY_CLIENT_ID.take(8)}…", color = Color.DarkGray, fontSize = 12.sp)
+                    Text("Output: ${device?.name ?: "TV not selected"}", color = navy)
+                    Text(playbackStatus, color = Color.DarkGray, fontSize = 13.sp)
+                    Button(onClick = {
+                        scope.launch {
+                            try {
+                                devices = withContext(Dispatchers.IO) { api.devices() }
+                                val tv = devices.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
+                                if (tv != null) { device = tv; playbackStatus = "TV selected: ${tv.name}" }
+                                else playbackStatus = "Select your TV below; open Spotify on TV if absent"
+                            } catch (e: Exception) { playbackStatus = "Devices: ${e.message}" }
+                        }
+                    }, enabled = auth.hasSession()) { Text("FIND TV") }
+                    devices.forEach { candidate ->
+                        Button(onClick = { device = candidate; playbackStatus = "Selected: ${candidate.name}" }) {
+                            Text((if (device?.id == candidate.id) "* " else "") + candidate.name)
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("|◀", "▶", "Ⅱ", "■", "▶|").forEach { label ->
-                    Button(onClick = { /* disabled until Spotify OAuth and Connect are implemented */ }, enabled = false, shape = RoundedCornerShape(2.dp), colors = ButtonDefaults.buttonColors(disabledContainerColor = Color.Gray, disabledContentColor = Color.White)) { Text(label, fontSize = 18.sp) }
+                listOf("PREV", "PLAY", "PAUSE", "NEXT").forEachIndexed { index, label ->
+                    Button(onClick = {
+                        when (index) {
+                            0 -> runPlayback { api.previous(it.id) }
+                            1 -> runPlayback { output ->
+                                val playlist = currentPlaylist
+                                if (playlist != null) api.play(playlist.id, output.id, selected.coerceAtLeast(0))
+                                else api.resume(output.id)
+                            }
+                            2 -> runPlayback { api.pause(it.id) }
+                            3 -> runPlayback { api.next(it.id) }
+                        }
+                    }, enabled = auth.hasSession() && !playbackBusy, shape = RoundedCornerShape(2.dp)) {
+                        Text(label, fontSize = 16.sp)
+                    }
                 }
             }
         }
@@ -129,6 +188,6 @@ fun AmpTVScreen() {
                 }
             }
         }
-        Text("MVP 0.2 • SPOTIFY PLAYLIST BROWSER • PLAYBACK COMING NEXT", color = silver, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+        Text("MVP 0.3 • SPOTIFY CONNECT • SELECT PLAYLIST AND PRESS PLAY", color = silver, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
     }
 }
