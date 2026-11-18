@@ -86,7 +86,26 @@ fun AmpTVScreen() {
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
     var visualTick by remember { mutableIntStateOf(0) }
     var sessionReady by remember { mutableStateOf(auth.hasSession()) }
+    val visPrefs = remember { context.getSharedPreferences("visualizer", android.content.Context.MODE_PRIVATE) }
+    var visBands by remember { mutableIntStateOf(visPrefs.getInt("bands", 28)) }
+    var visSensitivity by remember { mutableFloatStateOf(visPrefs.getFloat("sensitivity", 1f)) }
+    var visDecay by remember { mutableFloatStateOf(visPrefs.getFloat("decay", 0.65f)) }
+    var visPeaks by remember { mutableStateOf(visPrefs.getBoolean("peaks", true)) }
+    var visColor by remember { mutableStateOf(visPrefs.getString("color", "green") ?: "green") }
+    var showVisSettings by remember { mutableStateOf(false) }
     val spectrum = remember { AudioSpectrum() }
+    SideEffect {
+        spectrum.bandCount = visBands
+        spectrum.sensitivity = visSensitivity
+        spectrum.decay = visDecay
+        spectrum.showPeaks = visPeaks
+    }
+    val spectrumColor = when (visColor) {
+        "blue" -> Color(0xFF6AD7FF)
+        "classic" -> Color(0xFF8AFF44)
+        else -> green
+    }
+
     var fftStatus by remember { mutableStateOf("FFT not tested") }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { spectrum.start(); fftStatus = spectrum.status }
@@ -221,6 +240,46 @@ fun AmpTVScreen() {
         }
     }
 
+    if (showVisSettings) {
+        AlertDialog(
+            onDismissRequest = { showVisSettings = false },
+            title = { Text("Visualizer Settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Frequency bands: $visBands")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(19, 28, 38, 64).forEach { n ->
+                            Button(onClick = { visBands = n; visPrefs.edit().putInt("bands", n).apply() },
+                                contentPadding = PaddingValues(5.dp)) { Text("$n") }
+                        }
+                    }
+                    Text("Sensitivity: ${(visSensitivity * 100).toInt()}%")
+                    Slider(value = visSensitivity, onValueChange = {
+                        visSensitivity = it; visPrefs.edit().putFloat("sensitivity", it).apply()
+                    }, valueRange = 0.3f..2f)
+                    Text("Decay: ${(visDecay * 100).toInt()}%")
+                    Slider(value = visDecay, onValueChange = {
+                        visDecay = it; visPrefs.edit().putFloat("decay", it).apply()
+                    }, valueRange = 0f..0.95f)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = visPeaks, onCheckedChange = {
+                            visPeaks = it; visPrefs.edit().putBoolean("peaks", it).apply()
+                        })
+                        Text("Peak indicators")
+                    }
+                    Text("Colors")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("green", "classic", "blue").forEach { color ->
+                            Button(onClick = { visColor = color; visPrefs.edit().putString("color", color).apply() },
+                                contentPadding = PaddingValues(5.dp)) { Text(color.uppercase(), fontSize = 11.sp) }
+                        }
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { showVisSettings = false }) { Text("DONE") } }
+        )
+    }
+
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -239,12 +298,19 @@ fun AmpTVScreen() {
                     color = green, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                 Canvas(Modifier.fillMaxWidth().height(19.dp)) {
                     val tick = visualTick
-                    val bars = 28
+                    val bars = visBands
                     val width = size.width / (bars * 1.5f)
                     for (i in 0 until bars) {
                         val wave = spectrum.bands.getOrElse(i) { 0f }
                         val height = size.height * wave
-                        drawRect(green, topLeft = Offset(i * size.width / bars, size.height - height), size = Size(width, height))
+                        val barColor = if (visColor == "classic" && wave > 0.8f) Color.Red
+                            else if (visColor == "classic" && wave > 0.6f) Color.Yellow else spectrumColor
+                        drawRect(barColor, topLeft = Offset(i * size.width / bars, size.height - height), size = Size(width, height))
+                        if (visPeaks) {
+                            val peakY = size.height * (1f - spectrum.peaks.getOrElse(i) { 0f })
+                            drawRect(spectrumColor, topLeft = Offset(i * size.width / bars, peakY),
+                                size = Size(width, 2.dp.toPx()))
+                        }
                     }
                 }
             }
@@ -267,6 +333,11 @@ fun AmpTVScreen() {
                         ) { Text(label, fontSize = 13.sp) }
                     }
 
+                }
+                Button(onClick = { showVisSettings = !showVisSettings },
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                    Text("VIS", fontSize = 12.sp)
                 }
                 if (authStatus != "Ready") Text(authStatus, color = navy, fontSize = 12.sp, maxLines = 1)
                 if (!auth.hasSession()) {
