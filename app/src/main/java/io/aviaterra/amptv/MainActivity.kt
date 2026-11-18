@@ -1,6 +1,7 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import android.view.WindowManager
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
@@ -57,6 +58,7 @@ private fun jamQr(url: String): Bitmap {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent { AmpTVScreen() }
     }
 }
