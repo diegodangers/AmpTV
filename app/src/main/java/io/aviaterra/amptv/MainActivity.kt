@@ -102,6 +102,10 @@ fun AmpTVScreen() {
     LaunchedEffect(Unit) { while (true) { delay(110); visualTick++ } }
     fun runPlayback(action: (SpotifyDevice) -> Unit) {
         if (playbackBusy) return
+        val listState = if (currentPlaylist != null) trackScroll else playlistScroll
+        val view = currentPlaylist?.id
+        val savedIndex = listState.firstVisibleItemIndex
+        val savedOffset = listState.firstVisibleItemScrollOffset
         playbackBusy = true
         scope.launch {
             try {
@@ -119,7 +123,14 @@ fun AmpTVScreen() {
                 }
             } catch (e: Exception) {
                 playbackStatus = "Playback error: ${e.message ?: "Request failed"}"
-            } finally { playbackBusy = false }
+            } finally {
+                playbackBusy = false
+                if (currentPlaylist?.id == view &&
+                    (listState.firstVisibleItemIndex != savedIndex ||
+                     listState.firstVisibleItemScrollOffset != savedOffset)) {
+                    listState.scrollToItem(savedIndex, savedOffset)
+                }
+            }
         }
     }
     var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
@@ -166,7 +177,7 @@ fun AmpTVScreen() {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.5.1  •  JAM QR", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.5.2  •  NAV FIX", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
@@ -194,11 +205,7 @@ fun AmpTVScreen() {
                             onClick = {
                                 when (index) {
                                     0 -> runPlayback { api.previous(it.id) }
-                                    1 -> runPlayback { output ->
-                                        val playlist = currentPlaylist
-                                        if (playlist != null) api.play(playlist.id, output.id, tracks.getOrNull(selected)?.uri)
-                                        else api.resume(output.id)
-                                    }
+                                    1 -> runPlayback { api.resume(it.id) }
                                     2 -> runPlayback { api.pause(it.id) }
                                     3 -> runPlayback { api.next(it.id) }
                                 }
