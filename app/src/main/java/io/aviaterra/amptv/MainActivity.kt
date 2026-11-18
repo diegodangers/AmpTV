@@ -1,6 +1,11 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
@@ -53,6 +58,18 @@ fun AmpTVScreen() {
     var playbackBusy by remember { mutableStateOf(false) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
     var visualTick by remember { mutableIntStateOf(0) }
+    val spectrum = remember { AudioSpectrum() }
+    var fftStatus by remember { mutableStateOf("FFT not tested") }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { spectrum.start(); fftStatus = spectrum.status }
+        else fftStatus = "FFT permission denied"
+    }
+    DisposableEffect(Unit) { onDispose { spectrum.stop() } }
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            spectrum.start(); fftStatus = spectrum.status
+        }
+    }
     LaunchedEffect(auth.hasSession()) {
         if (auth.hasSession()) while (true) {
             try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() } }
@@ -121,7 +138,7 @@ fun AmpTVScreen() {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.4.0  •  CLASSIC SKIN", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.4.1  •  FFT TEST", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
@@ -136,8 +153,8 @@ fun AmpTVScreen() {
                     val bars = 28
                     val width = size.width / (bars * 1.5f)
                     for (i in 0 until bars) {
-                        val wave = (sin(tick * 0.37 + i * 0.82) + sin(tick * 0.21 + i * 1.39) + 2.0) / 4.0
-                        val height = if (nowPlaying?.playing == true) (size.height * (0.15 + 0.85 * wave)).toFloat() else size.height * 0.08f
+                        val wave = spectrum.bands.getOrElse(i) { 0f }
+                        val height = size.height * wave
                         drawRect(green, topLeft = Offset(i * size.width / bars, size.height - height), size = Size(width, height))
                     }
                 }
@@ -167,6 +184,15 @@ fun AmpTVScreen() {
 
                 }
                 Text("${device?.name ?: "Automatic TV output"}  •  $authStatus", color = navy, fontSize = 12.sp, maxLines = 1)
+                if (fftStatus != "Real FFT active") {
+                    Button(onClick = {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            spectrum.start(); fftStatus = spectrum.status
+                        } else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }, modifier = Modifier.height(30.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text("TEST REAL FFT", fontSize = 11.sp)
+                    }
+                }
                 if (!auth.hasSession()) {
                     Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
                 }
