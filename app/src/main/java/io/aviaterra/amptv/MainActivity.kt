@@ -1,6 +1,11 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -38,6 +43,16 @@ private val silver = Color(0xFFC3C7C9)
 private val navy = Color(0xFF17285B)
 private val screen = Color(0xFF08100B)
 private val green = Color(0xFF65FF65)
+private const val TEST_JAM_URL = "https://open.spotify.com/socialsession/2dFCdR1YvDcJxq6znlXQMV"
+private fun jamQr(url: String): Bitmap {
+    val matrix = MultiFormatWriter().encode(url, BarcodeFormat.QR_CODE, 256, 256)
+    val pixels = IntArray(256 * 256) { i ->
+        if (matrix[i % 256, i / 256]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+    }
+    return Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+        setPixels(pixels, 0, 256, 0, 0, 256, 256)
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +70,7 @@ fun AmpTVScreen() {
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
     val scope = rememberCoroutineScope()
+    val jamImage = remember { jamQr(TEST_JAM_URL).asImageBitmap() }
     var devices by remember { mutableStateOf<List<SpotifyDevice>>(emptyList()) }
     var device by remember { mutableStateOf<SpotifyDevice?>(null) }
     var playbackStatus by remember { mutableStateOf("Playback not started") }
@@ -150,7 +166,7 @@ fun AmpTVScreen() {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.5.0  •  CLASSIC", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.5.1  •  JAM QR", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
@@ -199,6 +215,11 @@ fun AmpTVScreen() {
                 if (!auth.hasSession()) {
                     Button(onClick = { auth.signIn({ authStatus = it }, { sessionReady = true; reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
                 }
+            }
+            Column(Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(bitmap = jamImage, contentDescription = "Join Spotify Jam QR",
+                    modifier = Modifier.size(70.dp).background(Color.White).padding(2.dp))
+                Text("JOIN JAM", color = navy, fontSize = 10.sp)
             }
         }
         Column(Modifier.fillMaxWidth().weight(1f).border(2.dp, Color.White).background(silver).padding(6.dp)) {
