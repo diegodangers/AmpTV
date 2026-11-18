@@ -11,6 +11,10 @@ data class NowPlaying(val title: String, val artist: String, val progressMs: Lon
 
 data class SpotifyDevice(val id: String, val name: String, val active: Boolean)
 
+
+data class SpotifyPlaybackSession(val device: SpotifyDevice?, val track: NowPlaying?)
+data class SpotifyQueueItem(val title: String, val artist: String, val uri: String)
+
 class SpotifyApi(private val auth: SpotifyAuth) {
     private fun request(method: String, path: String, payload: String? = null): JSONObject {
         val connection = URL("https://api.spotify.com/v1/$path").openConnection() as HttpURLConnection
@@ -52,6 +56,46 @@ class SpotifyApi(private val auth: SpotifyAuth) {
             return NowPlaying(item.optString("name", "Unknown track"), artist,
                 data.optLong("progress_ms"), item.optLong("duration_ms"), data.optBoolean("is_playing"), item.optJSONObject("album")?.optString("name") ?: "")
         } finally { connection.disconnect() }
+    }
+
+
+    fun playbackSession(): SpotifyPlaybackSession? {
+        val connection = URL("https://api.spotify.com/v1/me/player").openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 12000
+            connection.readTimeout = 12000
+            connection.setRequestProperty("Authorization", "Bearer ${auth.validToken()}")
+            if (connection.responseCode == 204) return null
+            if (connection.responseCode !in 200..299)
+                throw IllegalStateException("Session HTTP ${connection.responseCode}")
+            val data = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val d = data.optJSONObject("device")
+            val device = d?.let { SpotifyDevice(it.optString("id"), it.optString("name"), it.optBoolean("is_active", true)) }
+            val item = data.optJSONObject("item")
+            val artists = item?.optJSONArray("artists")
+            val artist = (0 until (artists?.length() ?: 0)).mapNotNull { artists?.optJSONObject(it)?.optString("name") }.joinToString(", ")
+            val track = item?.let {
+                NowPlaying(it.optString("name"), artist, data.optLong("progress_ms"), it.optLong("duration_ms"),
+                    data.optBoolean("is_playing"), it.optJSONObject("album")?.optString("name") ?: "")
+            }
+            return SpotifyPlaybackSession(device, track)
+        } finally { connection.disconnect() }
+    }
+
+    fun queue(): List<SpotifyQueueItem> {
+        val data = request("GET", "me/player/queue")
+        val array = data.optJSONArray("queue") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val item = array.optJSONObject(i) ?: return@mapNotNull null
+            val artists = item.optJSONArray("artists")
+            val artist = (0 until (artists?.length() ?: 0)).mapNotNull { artists?.optJSONObject(it)?.optString("name") }.joinToString(", ")
+            SpotifyQueueItem(item.optString("name", "Unknown"), artist.ifBlank { item.optJSONObject("show")?.optString("name") ?: "" }, item.optString("uri"))
+        }
+    }
+
+    fun transferPlayback(deviceId: String, play: Boolean) {
+        val body = JSONObject().put("device_ids", org.json.JSONArray().put(deviceId)).put("play", play)
+        request("PUT", "me/player", body.toString())
     }
 
     fun devices(): List<SpotifyDevice> {
