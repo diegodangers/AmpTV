@@ -362,143 +362,124 @@ fun AmpTVScreen() {
             }
         }
     } else {
-    Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-            Spacer(Modifier.weight(1f))
-            Text("0.6  •  QUEUE", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-        }
-        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().height(152.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
-                Text(nowPlaying?.title ?: "AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 17.sp, maxLines = 1)
-                Text(nowPlaying?.artist ?: playbackStatus, color = green, fontFamily = FontFamily.Monospace, fontSize = 12.sp, maxLines = 1)
-                val position = nowPlaying?.progressMs ?: 0L
-                val duration = nowPlaying?.durationMs ?: 0L
-                Text("${position / 60000}:${(position / 1000 % 60).toString().padStart(2, '0')} / ${duration / 60000}:${(duration / 1000 % 60).toString().padStart(2, '0')}",
-                    color = green, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                Canvas(Modifier.fillMaxWidth().height(19.dp)) {
-                    val tick = visualTick
-                    val bars = visBands
-                    val width = size.width / (bars * 1.5f)
-                    for (i in 0 until bars) {
-                        val wave = spectrum.bands.getOrElse(i) { 0f }
-                        val height = size.height * wave
-                        val barColor = if (visColor == "classic" && wave > 0.8f) Color.Red
-                            else if (visColor == "classic" && wave > 0.6f) Color.Yellow else spectrumColor
-                        drawRect(barColor, topLeft = Offset(i * size.width / bars, size.height - height), size = Size(width, height))
-                        if (visPeaks) {
-                            val peakY = size.height * (1f - spectrum.peaks.getOrElse(i) { 0f })
-                            drawRect(spectrumColor, topLeft = Offset(i * size.width / bars, peakY),
-                                size = Size(width, 2.dp.toPx()))
+        Column(Modifier.fillMaxSize().background(Color(0xFF10162D)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth()
+                .background(Brush.horizontalGradient(listOf(Color(0xFF57679B), retroNavy, Color(0xFF0C1530))))
+                .border(2.dp, Color(0xFF8895B8)).padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("AMP TV", color = Color.White, fontFamily = FontFamily.Monospace,
+                    fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Text("  CLASSIC PLAYER", color = Color(0xFFB8C7EA),
+                    fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                Spacer(Modifier.weight(1f))
+                RetroButton("SETTINGS", onClick = { settingsOpen = true })
+            }
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    RetroFrame("AmpTV — Main Player", Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RetroDisplay(Modifier.weight(0.9f)) {
+                                val pos = livePosition.coerceIn(0L, nowPlaying?.durationMs ?: 0L)
+                                RetroReadout("%d:%02d".format(pos / 60000, pos / 1000 % 60), size = 31)
+                                RetroSpectrum(spectrum.bands, spectrum.peaks, visBands, visPeaks, visColor)
+                            }
+                            RetroDisplay(Modifier.weight(1.4f)) {
+                                RetroReadout(nowPlaying?.artist ?: "AMP TV", size = 14)
+                                RetroReadout(nowPlaying?.title ?: "SPOTIFY CONNECT", size = 17)
+                                RetroReadout(if (nowPlaying?.playing == true) "PLAYING" else "PAUSED",
+                                    size = 12)
+                                val duration = nowPlaying?.durationMs ?: 0L
+                                RetroProgress(if (duration > 0) livePosition.toFloat() / duration else 0f)
+                                RetroReadout("TOTAL  %d:%02d".format(duration / 60000, duration / 1000 % 60), size = 11)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            RetroButton("<<", { runPlayback { api.previous(it) } }, Modifier.weight(1f),
+                                enabled = sessionReady && !playbackBusy)
+                            RetroButton("PLAY", { runPlayback { api.resume(it) } }, Modifier.weight(1f),
+                                enabled = sessionReady && !playbackBusy)
+                            RetroButton("PAUSE", { runPlayback { api.pause(it) } }, Modifier.weight(1f),
+                                enabled = sessionReady && !playbackBusy)
+                            RetroButton(">>", { runPlayback { api.next(it) } }, Modifier.weight(1f),
+                                enabled = sessionReady && !playbackBusy)
+                            RetroButton("SHUFFLE", { toggleShuffle() }, Modifier.weight(1.5f),
+                                enabled = sessionReady && !playbackBusy && activeSession?.shuffle != null,
+                                active = activeSession?.shuffle == true)
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("VOL", color = retroGreen, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            Box(Modifier.weight(1f)) { RetroProgress(androidVolume, accent = retroGreen) }
+                            Text(activeSession?.device?.name ?: "NO DEVICE", color = Color(0xFFCED7F3),
+                                fontSize = 11.sp, maxLines = 1, fontFamily = FontFamily.Monospace)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (!sessionReady) {
+                                RetroButton("CONNECT SPOTIFY", {
+                                    auth.signIn({ authStatus = it }, { sessionReady = true; reload++ })
+                                })
+                            } else {
+                                RetroButton("TRANSFER TO TV", { transferToTv() }, enabled = !playbackBusy)
+                            }
+                            Text(playbackStatus, color = Color(0xFFD1DAF4), fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
+                    RetroFrame("Lyrics — LRCLIB", Modifier.fillMaxWidth().weight(1f)) {
+                        val lines = lyrics?.lines.orEmpty()
+                        val active = lines.indexOfLast { it.timeMs <= livePosition }
+                        val lyricScroll = rememberLazyListState()
+                        LaunchedEffect(active, lines.size) {
+                            if (active >= 0) lyricScroll.animateScrollToItem((active - 2).coerceAtLeast(0))
+                        }
+                        if (lines.isNotEmpty()) {
+                            LazyColumn(Modifier.fillMaxSize().background(retroDark).padding(10.dp),
+                                state = lyricScroll, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                itemsIndexed(lines) { index, line ->
+                                    Text(line.text.ifBlank { "♪" },
+                                        color = if (index == active) retroGreen else Color(0xFF5D8A5B),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = if (index == active) 19.sp else 15.sp)
+                                }
+                            }
+                        } else {
+                            val message = when {
+                                lyricsLoading -> "FINDING LYRICS..."
+                                lyricError -> "LYRICS SERVICE UNAVAILABLE"
+                                lyrics?.instrumental == true -> "INSTRUMENTAL"
+                                !lyrics?.plain.isNullOrBlank() -> lyrics!!.plain!!
+                                nowPlaying == null -> "PLAY A SONG TO SEE LYRICS"
+                                else -> "LYRICS UNAVAILABLE"
+                            }
+                            Text(message, Modifier.fillMaxSize().background(retroDark).padding(14.dp),
+                                color = retroGreen, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+                RetroFrame("Spotify Queue — ${queue.size} Upcoming", Modifier.weight(1.12f).fillMaxHeight()) {
+                    RetroDisplay(Modifier.fillMaxWidth()) {
+                        RetroReadout(if (nowPlaying == null) "NO ACTIVE TRACK" else
+                            "NOW: ${nowPlaying?.artist} — ${nowPlaying?.title}", size = 14)
+                    }
+                    Text(queueStatus, color = Color(0xFFCCD6EF), fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace, maxLines = 1)
+                    if (activeSession == null && sessionReady) {
+                        RetroButton("SHUFFLE LIKED SONGS", { shuffleLikedSongs() }, enabled = !playbackBusy)
+                    }
+                    LazyColumn(Modifier.fillMaxSize().background(retroDark).padding(9.dp),
+                        state = queueScroll, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(queue, key = { index, item -> "${item.uri}-$index" }) { index, item ->
+                            Text("${index + 1}. ${item.title} — ${item.artist}",
+                                color = retroGreen, fontSize = 17.sp, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp))
                         }
                     }
                 }
             }
-            Column(Modifier.weight(1.5f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    listOf("PREV", "PLAY", "PAUSE", "NEXT").forEachIndexed { index, label ->
-                        Button(
-                            onClick = {
-                                when (index) {
-                                    0 -> runPlayback { api.previous(it) }
-                                    1 -> runPlayback { api.resume(it) }
-                                    2 -> runPlayback { api.pause(it) }
-                                    3 -> runPlayback { api.next(it) }
-                                }
-                            },
-                            enabled = auth.hasSession() && !playbackBusy,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                            modifier = Modifier.height(38.dp),
-                            shape = RoundedCornerShape(2.dp)
-                        ) { Text(label, fontSize = 13.sp) }
-                    }
-
-                }
-                Button(onClick = { settingsOpen = true },
-                    modifier = Modifier.height(30.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Text("SETTINGS", fontSize = 12.sp)
-                }
-                if (authStatus != "Ready") Text(authStatus, color = navy, fontSize = 12.sp, maxLines = 1)
-                if (!auth.hasSession()) {
-                    Button(onClick = { auth.signIn({ authStatus = it }, { sessionReady = true; reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
-                }
-            }
-            Column(Modifier.width(180.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(activeSession?.device?.name ?: "NO ACTIVE DEVICE", color = navy, fontSize = 12.sp, maxLines = 1)
-                Button(onClick = { transferToTv() }, enabled = sessionReady && !playbackBusy,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)) {
-                    Text("TRANSFER TO TV", fontSize = 12.sp)
-                }
-                Text(playbackStatus, color = navy, fontSize = 10.sp, maxLines = 2)
-            }
         }
-        Column(Modifier.fillMaxWidth().weight(1f).border(2.dp, Color.White).background(silver).padding(6.dp)) {
-            Text("LYRICS  •  LRCLIB", modifier = Modifier.fillMaxWidth().background(navy).padding(6.dp),
-                color = Color.White, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
-            val lines = lyrics?.lines.orEmpty()
-            val active = lines.indexOfLast { it.timeMs <= livePosition }
-            val lyricScroll = rememberLazyListState()
-            LaunchedEffect(active, lines.size) {
-                if (active >= 0) lyricScroll.animateScrollToItem((active - 2).coerceAtLeast(0))
-            }
-            if (lines.isNotEmpty()) {
-                LazyColumn(Modifier.fillMaxSize().background(screen).padding(8.dp), state = lyricScroll,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    itemsIndexed(lines) { index, line ->
-                        Text(line.text.ifBlank { "♪" }, color = if (index == active) Color.White else green.copy(alpha = 0.55f),
-                            fontSize = if (index == active) 21.sp else 17.sp,
-                            fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal,
-                            fontFamily = FontFamily.Monospace)
-                    }
-                }
-            } else {
-                val message = when {
-                    lyricsLoading -> "Finding lyrics…"
-                    lyricError -> "Lyrics service unavailable"
-                    lyrics?.instrumental == true -> "Instrumental"
-                    !lyrics?.plain.isNullOrBlank() -> lyrics!!.plain!!
-                    nowPlaying == null -> "Play a song to see lyrics"
-                    else -> "Lyrics unavailable"
-                }
-                Text(message, Modifier.fillMaxSize().background(screen).padding(14.dp),
-                    color = green, fontSize = 17.sp, fontFamily = FontFamily.Monospace)
-            }
-        }
-            }
-        Column(Modifier.weight(1.25f).fillMaxHeight().border(2.dp, Color.White).background(silver).padding(6.dp)) {
-            Text("SPOTIFY QUEUE  •  ${queue.size} UPCOMING",
-                modifier = Modifier.fillMaxWidth().background(navy).padding(6.dp),
-                color = Color.White, fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text(queueStatus, color = navy, fontSize = 12.sp, modifier = Modifier.padding(5.dp))
-            if (activeSession == null && sessionReady) {
-                Button(onClick = { shuffleLikedSongs() }, enabled = !playbackBusy,
-                    modifier = Modifier.fillMaxWidth().padding(6.dp)) {
-                    Text("SHUFFLE LIKED SONGS")
-                }
-                Text(playbackStatus, color = navy, fontSize = 12.sp, modifier = Modifier.padding(5.dp))
-                Button(onClick = {
-                    auth.signOut()
-                    sessionReady = false
-                    auth.signIn({ authStatus = it }, { sessionReady = true; reload++ })
-                }, modifier = Modifier.padding(6.dp)) {
-                    Text("REAUTHORIZE SPOTIFY", fontSize = 11.sp)
-                }
-            }
-            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp), state = queueScroll) {
-                itemsIndexed(queue, key = { index, item -> "${item.uri}-$index" }) { index, item ->
-                    Text("${index + 1}. ${item.title} — ${item.artist}",
-                        color = green, fontSize = 19.sp, fontFamily = FontFamily.Monospace,
-                        maxLines = 1, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
-                }
-            }
-        }
-
-        }
-    }
     }
 }
