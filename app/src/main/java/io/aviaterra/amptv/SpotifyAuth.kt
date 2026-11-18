@@ -25,7 +25,7 @@ class SpotifyAuth(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val prefs = context.getSharedPreferences("spotify_session", Context.MODE_PRIVATE)
     private val redirect = "http://127.0.0.1:8888/callback"
-    private val scopes = "user-read-private playlist-read-private playlist-read-collaborative user-read-playback-state user-modify-playback-state"
+    private val scopes = "user-read-private playlist-read-private playlist-read-collaborative user-read-playback-state user-modify-playback-state user-library-read"
     private val lock = Any()
     @Volatile private var token: String? = null
     @Volatile private var refresh: String? = null
