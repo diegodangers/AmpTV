@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,7 +65,22 @@ fun AmpTVScreen() {
             Text("PLAYLIST EDITOR", color = Color.White, modifier = Modifier.fillMaxWidth().background(navy).padding(8.dp), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             LazyColumn(Modifier.fillMaxSize().background(screen).padding(8.dp)) {
                 itemsIndexed(demoTracks) { index, track ->
-                    Text(track, color = if (selected == index) screen else green, modifier = Modifier.fillMaxWidth().background(if (selected == index) green else screen).clickable { selected = index }.padding(10.dp), fontSize = 19.sp, fontFamily = FontFamily.Monospace)
+                    var focused by remember { mutableStateOf(false) }
+                    val highlighted = focused || selected == index
+                    Text(
+                        text = track,
+                        color = if (highlighted) Color.White else green,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focused = it.isFocused }
+                            .background(if (highlighted) Color(0xFF1749B5) else screen)
+                            .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent)
+                            .clickable { selected = index }
+                            .padding(10.dp),
+                        fontSize = 19.sp,
+                        fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
             }
         }
