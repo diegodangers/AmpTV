@@ -142,7 +142,7 @@ fun AmpTVScreen() {
     fun playSelectedTrack(index: Int) {
         val playlist = currentPlaylist ?: return
         selected = index
-        runPlayback { output -> api.play(playlist.id, output.id, index) }
+        runPlayback { output -> api.play(playlist.id, output.id, tracks.getOrNull(index)?.uri) }
     }
     val demoTracks = remember { listOf("Connect Spotify to see your playlists") }
 
@@ -180,7 +180,7 @@ fun AmpTVScreen() {
                                     0 -> runPlayback { api.previous(it.id) }
                                     1 -> runPlayback { output ->
                                         val playlist = currentPlaylist
-                                        if (playlist != null) api.play(playlist.id, output.id, selected.coerceAtLeast(0))
+                                        if (playlist != null) api.play(playlist.id, output.id, tracks.getOrNull(selected)?.uri)
                                         else api.resume(output.id)
                                     }
                                     2 -> runPlayback { api.pause(it.id) }
