@@ -266,14 +266,14 @@ fun AmpTVScreen() {
     }
 
     if (settingsOpen) {
-        Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp)) {
+        Column(Modifier.fillMaxSize().background(Color(0xFF10162D)).padding(14.dp)) {
             Row(Modifier.fillMaxWidth().background(navy).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("AMP TV  •  PREFERENCES", color = Color.White, fontSize = 23.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.weight(1f))
                 Button(onClick = { settingsOpen = false }) { Text("BACK TO PLAYER") }
             }
-            Row(Modifier.fillMaxSize().background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.width(210.dp).fillMaxHeight().background(Color(0xFF9299A5)).padding(6.dp),
+            Row(Modifier.fillMaxSize().background(retroNavy).border(2.dp, Color(0xFF8996BC)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.width(210.dp).fillMaxHeight().background(Color(0xFF2A3768)).padding(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("Visualizer", "Playback", "Spotify", "Lyrics", "Appearance", "Diagnostics").forEach { name ->
                         Button(onClick = { settingsSection = name }, modifier = Modifier.fillMaxWidth().height(44.dp),
@@ -285,23 +285,23 @@ fun AmpTVScreen() {
                         }
                     }
                 }
-                Column(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFE1E3E7)).padding(16.dp),
+                Column(Modifier.weight(1f).fillMaxHeight().background(retroDark).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(settingsSection.uppercase(), color = navy, fontSize = 22.sp, fontFamily = FontFamily.Monospace)
-                    HorizontalDivider(color = Color.Gray)
+                    Text(settingsSection.uppercase(), color = retroGreen, fontSize = 22.sp, fontFamily = FontFamily.Monospace)
+                    HorizontalDivider(color = Color(0xFF5B6B99))
                     when (settingsSection) {
                         "Visualizer" -> {
-                            Text("FREQUENCY BANDS: $visBands", color = navy)
+                            Text("FREQUENCY BANDS: $visBands", color = retroGreen)
                             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 listOf(19, 28, 38, 64).forEach { n ->
                                     Button(onClick = { visBands = n; visPrefs.edit().putInt("bands", n).apply() }) { Text("$n") }
                                 }
                             }
-                            Text("SENSITIVITY: ${(visSensitivity * 100).toInt()}%", color = navy)
+                            Text("SENSITIVITY: ${(visSensitivity * 100).toInt()}%", color = retroGreen)
                             Slider(value = visSensitivity, onValueChange = {
                                 visSensitivity = it; visPrefs.edit().putFloat("sensitivity", it).apply()
                             }, valueRange = 0.3f..2f)
-                            Text("DECAY: ${(visDecay * 100).toInt()}%", color = navy)
+                            Text("DECAY: ${(visDecay * 100).toInt()}%", color = retroGreen)
                             Slider(value = visDecay, onValueChange = {
                                 visDecay = it; visPrefs.edit().putFloat("decay", it).apply()
                             }, valueRange = 0f..0.95f)
@@ -309,7 +309,7 @@ fun AmpTVScreen() {
                                 Checkbox(checked = visPeaks, onCheckedChange = {
                                     visPeaks = it; visPrefs.edit().putBoolean("peaks", it).apply()
                                 })
-                                Text("PEAK INDICATORS", color = navy)
+                                Text("PEAK INDICATORS", color = retroGreen)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 listOf("green", "classic", "blue").forEach { color ->
@@ -320,14 +320,14 @@ fun AmpTVScreen() {
                             }
                         }
                         "Playback" -> {
-                            Text("SESSION DETECTION: 4 SECONDS", color = navy)
-                            Text("QUEUE REFRESH: 12 SECONDS", color = navy)
-                            Text("DEFAULT: SHUFFLE LIKED SONGS (MANUAL)", color = navy)
-                            Text("QUEUE IS ALWAYS THE PRIMARY TRACK LIST", color = navy)
+                            Text("SESSION DETECTION: 4 SECONDS", color = retroGreen)
+                            Text("QUEUE REFRESH: 12 SECONDS", color = retroGreen)
+                            Text("DEFAULT: SHUFFLE LIKED SONGS (MANUAL)", color = retroGreen)
+                            Text("QUEUE IS ALWAYS THE PRIMARY TRACK LIST", color = retroGreen)
                         }
                         "Spotify" -> {
-                            Text(if (sessionReady) "ACCOUNT CONNECTED" else "ACCOUNT DISCONNECTED", color = navy)
-                            Text("DEVICE: ${activeSession?.device?.name ?: "NONE"}", color = navy)
+                            Text(if (sessionReady) "ACCOUNT CONNECTED" else "ACCOUNT DISCONNECTED", color = retroGreen)
+                            Text("DEVICE: ${activeSession?.device?.name ?: "NONE"}", color = retroGreen)
                             Button(onClick = { transferToTv(); settingsOpen = false }, enabled = sessionReady && !playbackBusy) {
                                 Text("TRANSFER TO TV")
                             }
@@ -335,27 +335,27 @@ fun AmpTVScreen() {
                                 auth.signOut(); sessionReady = false
                                 auth.signIn({ authStatus = it }, { sessionReady = true; reload++ })
                             }) { Text("REAUTHORIZE SPOTIFY") }
-                            Text(authStatus, color = navy)
+                            Text(authStatus, color = retroGreen)
                         }
                         "Lyrics" -> {
-                            Text("LRCLIB V1 • PERSISTENT CACHE", color = navy)
+                            Text("LRCLIB V1 • PERSISTENT CACHE", color = retroGreen)
                             Button(onClick = {
                                 java.io.File(context.cacheDir, "lrclib").listFiles()?.forEach { it.delete() }
                             }) { Text("CLEAR LYRICS CACHE") }
-                            Text("SYNC: SPOTIFY PLAYBACK POSITION", color = navy)
+                            Text("SYNC: SPOTIFY PLAYBACK POSITION", color = retroGreen)
                         }
                         "Appearance" -> {
-                            Text("CLASSIC WINAMP 2.X", color = navy)
-                            Text("SILVER CHROME • NAVY TITLE BARS", color = navy)
-                            Text("GREEN LED DISPLAY • TV-SIZED CONTROLS", color = navy)
+                            Text("CLASSIC WINAMP 2.X", color = retroGreen)
+                            Text("SILVER CHROME • NAVY TITLE BARS", color = retroGreen)
+                            Text("GREEN LED DISPLAY • TV-SIZED CONTROLS", color = retroGreen)
                         }
                         "Diagnostics" -> {
-                            Text("VERSION: 0.6 DEVELOPMENT", color = navy)
-                            Text("FFT: $fftStatus", color = navy)
-                            Text("SPOTIFY: $authStatus", color = navy)
-                            Text("SESSION: $queueStatus", color = navy)
-                            Text("QUEUE TRACKS: ${queue.size}", color = navy)
-                            Text("PLAYBACK: $playbackStatus", color = navy)
+                            Text("VERSION: 0.6 DEVELOPMENT", color = retroGreen)
+                            Text("FFT: $fftStatus", color = retroGreen)
+                            Text("SPOTIFY: $authStatus", color = retroGreen)
+                            Text("SESSION: $queueStatus", color = retroGreen)
+                            Text("QUEUE TRACKS: ${queue.size}", color = retroGreen)
+                            Text("PLAYBACK: $playbackStatus", color = retroGreen)
                         }
                     }
                 }
