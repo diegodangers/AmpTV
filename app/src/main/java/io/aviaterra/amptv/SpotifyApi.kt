@@ -150,7 +150,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                     artists.optJSONObject(j)?.optString("name")?.let { names.add(it) }
                 }
                 result.add(SpotifyTrack(track.optString("name", "Unknown track"),
-                    names.joinToString(", "), track.optJSONObject("album")?.optString("name") ?: "", track.optString("uri"))
+                    names.joinToString(", "), track.optJSONObject("album")?.optString("name") ?: "", track.optString("uri")))
             }
             next = response.optString("next").takeIf { it.startsWith("https://api.spotify.com/") }
         }
