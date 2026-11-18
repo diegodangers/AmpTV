@@ -7,7 +7,63 @@ import java.net.URL
 data class SpotifyPlaylist(val id: String, val name: String, val total: Int)
 data class SpotifyTrack(val name: String, val artist: String, val album: String)
 
+data class SpotifyDevice(val id: String, val name: String, val active: Boolean)
+
 class SpotifyApi(private val auth: SpotifyAuth) {
+    private fun request(method: String, path: String, payload: String? = null): JSONObject {
+        val connection = URL("https://api.spotify.com/v1/$path").openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+            connection.setRequestProperty("Authorization", "Bearer ${auth.validToken()}")
+            if (payload != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            }
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val body = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                val message = try { JSONObject(body).optJSONObject("error")?.optString("message") ?: "" } catch (_: Exception) { "" }
+                throw IllegalStateException("Spotify HTTP $status" + if (message.isNotBlank()) ": ${message.take(120)}" else "")
+            }
+            return if (status == 204) JSONObject() else JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        } finally { connection.disconnect() }
+    }
+
+    fun devices(): List<SpotifyDevice> {
+        val array = request("GET", "me/player/devices").getJSONArray("devices")
+        return (0 until array.length()).mapNotNull { i ->
+            val d = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = d.optString("id")
+            if (id.isBlank() || d.optBoolean("is_restricted")) null
+            else SpotifyDevice(id, d.optString("name", "Spotify device"), d.optBoolean("is_active"))
+        }
+    }
+
+    fun play(playlistId: String, deviceId: String, offset: Int = 0) {
+        val payload = JSONObject().put("context_uri", "spotify:playlist:$playlistId")
+        if (offset > 0) payload.put("offset", JSONObject().put("position", offset))
+        request("PUT", "me/player/play?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}", payload.toString())
+    }
+
+    fun resume(deviceId: String) {
+        request("PUT", "me/player/play?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+    }
+
+    fun pause(deviceId: String) {
+        request("PUT", "me/player/pause?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+    }
+
+    fun next(deviceId: String) {
+        request("POST", "me/player/next?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+    }
+
+    fun previous(deviceId: String) {
+        request("POST", "me/player/previous?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+    }
+
     private fun get(url: String): JSONObject {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
