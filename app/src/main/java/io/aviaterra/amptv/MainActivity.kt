@@ -1,6 +1,8 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import android.media.AudioManager
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import android.os.SystemClock
 import android.view.WindowManager
@@ -36,6 +38,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +79,15 @@ fun AmpTVScreen() {
     var lyricError by remember { mutableStateOf(false) }
     var playbackSampleTime by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val scope = rememberCoroutineScope()
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    var androidVolume by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            androidVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+            delay(2000)
+        }
+    }
     var devices by remember { mutableStateOf<List<SpotifyDevice>>(emptyList()) }
     var device by remember { mutableStateOf<SpotifyDevice?>(null) }
     var playbackStatus by remember { mutableStateOf("Playback not started") }
@@ -134,7 +146,7 @@ fun AmpTVScreen() {
             } catch (e: Exception) {
                 queueStatus = "Session unavailable: ${e.message}"
             }
-            delay(4000)
+            delay(2000)
         }
     }
     LaunchedEffect(sessionReady) {
@@ -145,6 +157,12 @@ fun AmpTVScreen() {
                 queueStatus = "Queue unavailable: ${e.message}"
             }
             delay(12000)
+        }
+    }
+    LaunchedEffect(nowPlaying?.title, nowPlaying?.artist, nowPlaying?.durationMs) {
+        if (sessionReady && nowPlaying != null) {
+            try { queue = withContext(Dispatchers.IO) { api.queue() } }
+            catch (_: Exception) { }
         }
     }
     LaunchedEffect(nowPlaying?.title, nowPlaying?.artist, nowPlaying?.album, nowPlaying?.durationMs) {
@@ -181,6 +199,10 @@ fun AmpTVScreen() {
                 playbackStatus = "Playback error: ${e.message ?: "Request failed"}"
             } finally { playbackBusy = false }
         }
+    }
+    fun toggleShuffle() {
+        val current = activeSession?.shuffle ?: return
+        runPlayback { api.setShuffle(!current, it) }
     }
     fun transferToTv() {
         if (playbackBusy) return
