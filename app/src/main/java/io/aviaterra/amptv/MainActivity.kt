@@ -77,6 +77,7 @@ fun AmpTVScreen() {
     var device by remember { mutableStateOf<SpotifyDevice?>(null) }
     var playbackStatus by remember { mutableStateOf("Playback not started") }
     var playbackBusy by remember { mutableStateOf(false) }
+    var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
     var visualTick by remember { mutableIntStateOf(0) }
     var sessionReady by remember { mutableStateOf(auth.hasSession()) }
@@ -138,7 +139,6 @@ fun AmpTVScreen() {
     var authStatus by remember { mutableStateOf(if (auth.hasSession()) "Restoring Spotify session…" else "Spotify not connected") }
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>>(emptyList()) }
     var tracks by remember { mutableStateOf<List<SpotifyTrack>>(emptyList()) }
-    var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
