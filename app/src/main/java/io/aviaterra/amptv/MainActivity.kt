@@ -100,94 +100,104 @@ fun AmpTVScreen() {
             } finally { loading = false }
         }
     }
-    val demoTracks = remember { listOf("01. Welcome to AmpTV", "02. Connect your Spotify account", "03. Choose a Spotify Connect device", "04. Start your playlist") }
-    Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().background(navy).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("AMP TV", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+    val demoTracks = remember { listOf("Connect Spotify to see your playlists") }
+    var showDevices by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.3.0  •  CLASSIC SKIN", color = silver, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+            Text("0.3.1  •  CLASSIC SKIN", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
-        Column(Modifier.fillMaxWidth().border(3.dp, Color.White).background(silver).padding(16.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.weight(1f).background(screen).padding(18.dp)) {
-                    Text("AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 21.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text("00:00     128 kbps     STEREO", color = green, fontFamily = FontFamily.Monospace, fontSize = 17.sp)
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("SPOTIFY CONTROLLER", color = navy, fontWeight = FontWeight.Bold)
-                    Text(authStatus, color = Color.DarkGray)
-                    Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }) {
-                        Text(if (auth.hasSession()) "RECONNECT" else "CONNECT SPOTIFY")
-                    }
-                    Text("Output: ${device?.name ?: "TV not selected"}", color = navy)
-                    Text(playbackStatus, color = Color.DarkGray, fontSize = 13.sp)
-                    Button(onClick = {
-                        scope.launch {
-                            try {
-                                devices = withContext(Dispatchers.IO) { api.devices() }
-                                val tv = devices.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
-                                if (tv != null) { device = tv; playbackStatus = "TV selected: ${tv.name}" }
-                                else playbackStatus = "Select your TV below; open Spotify on TV if absent"
-                            } catch (e: Exception) { playbackStatus = "Devices: ${e.message}" }
-                        }
-                    }, enabled = auth.hasSession()) { Text("FIND TV") }
-                    devices.forEach { candidate ->
-                        Button(onClick = { device = candidate; playbackStatus = "Selected: ${candidate.name}" }) {
-                            Text((if (device?.id == candidate.id) "* " else "") + candidate.name)
-                        }
-                    }
-                }
+        Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
+                Text(currentPlaylist?.name ?: "AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 19.sp, maxLines = 1)
+                Text(playbackStatus, color = green, fontFamily = FontFamily.Monospace, fontSize = 13.sp, maxLines = 2)
             }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("PREV", "PLAY", "PAUSE", "NEXT").forEachIndexed { index, label ->
-                    Button(onClick = {
-                        when (index) {
-                            0 -> runPlayback { api.previous(it.id) }
-                            1 -> runPlayback { output ->
-                                val playlist = currentPlaylist
-                                if (playlist != null) api.play(playlist.id, output.id, selected.coerceAtLeast(0))
-                                else api.resume(output.id)
-                            }
-                            2 -> runPlayback { api.pause(it.id) }
-                            3 -> runPlayback { api.next(it.id) }
-                        }
-                    }, enabled = auth.hasSession() && !playbackBusy, shape = RoundedCornerShape(2.dp)) {
-                        Text(label, fontSize = 16.sp)
+            Column(Modifier.weight(1.5f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    listOf("PREV", "PLAY", "PAUSE", "NEXT").forEachIndexed { index, label ->
+                        Button(
+                            onClick = {
+                                when (index) {
+                                    0 -> runPlayback { api.previous(it.id) }
+                                    1 -> runPlayback { output ->
+                                        val playlist = currentPlaylist
+                                        if (playlist != null) api.play(playlist.id, output.id, selected.coerceAtLeast(0))
+                                        else api.resume(output.id)
+                                    }
+                                    2 -> runPlayback { api.pause(it.id) }
+                                    3 -> runPlayback { api.next(it.id) }
+                                }
+                            },
+                            enabled = auth.hasSession() && !playbackBusy,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.height(38.dp),
+                            shape = RoundedCornerShape(2.dp)
+                        ) { Text(label, fontSize = 13.sp) }
                     }
+                    Button(onClick = { showDevices = !showDevices },
+                        modifier = Modifier.height(38.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
+                        Text("OUTPUT", fontSize = 13.sp)
+                    }
+                }
+                Text("${device?.name ?: "TV not selected"}  •  $authStatus", color = navy, fontSize = 12.sp, maxLines = 1)
+                if (!auth.hasSession()) {
+                    Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().weight(1f).border(3.dp, Color.White).background(silver).padding(10.dp)) {
-            Text(if (currentPlaylist == null) "PLAYLISTS" else "TRACKS: ${currentPlaylist!!.name}", color = Color.White, modifier = Modifier.fillMaxWidth().background(navy).padding(8.dp), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-            if (currentPlaylist != null) {
-                Button(onClick = { currentPlaylist = null; tracks = emptyList(); selected = 0 }) { Text("BACK TO PLAYLISTS") }
+        if (showDevices) {
+            Row(Modifier.fillMaxWidth().background(silver).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            devices = withContext(Dispatchers.IO) { api.devices() }
+                            val tv = devices.firstOrNull { it.name.contains("onn", true) || it.name.contains("google tv", true) || it.name.contains("family room tv", true) }
+                            if (tv != null) { device = tv; playbackStatus = "TV selected: ${tv.name}" }
+                            else playbackStatus = "Open Spotify on the TV, then refresh"
+                        } catch (e: Exception) { playbackStatus = "Devices: ${e.message}" }
+                    }
+                }) { Text("REFRESH") }
+                devices.forEach { candidate ->
+                    Button(onClick = { device = candidate; playbackStatus = "Selected: ${candidate.name}"; showDevices = false }) {
+                        Text(candidate.name, maxLines = 1)
+                    }
+                }
+            }
+        }
+        Column(Modifier.fillMaxWidth().weight(1f).border(2.dp, Color.White).background(silver).padding(6.dp)) {
+            Row(Modifier.fillMaxWidth().background(navy).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (currentPlaylist == null) "PLAYLISTS  (${playlists.size})" else "TRACKS  •  ${currentPlaylist!!.name}",
+                    color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1,
+                    modifier = Modifier.weight(1f))
+                if (currentPlaylist != null) {
+                    Button(onClick = { currentPlaylist = null; tracks = emptyList(); selected = 0 }, modifier = Modifier.height(34.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)) { Text("BACK", fontSize = 13.sp) }
+                }
             }
             if (loading) Text("Loading Spotify…", color = navy)
             val entries = if (currentPlaylist != null) tracks.map { "${it.name} — ${it.artist}" }
-                          else if (auth.hasSession()) playlists.map { it.name } else demoTracks
-            LazyColumn(Modifier.fillMaxSize().background(screen).padding(8.dp)) {
-                itemsIndexed(entries) { index, track ->
+                else if (auth.hasSession()) playlists.map { it.name } else demoTracks
+            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp)) {
+                itemsIndexed(entries) { index, entry ->
                     var focused by remember { mutableStateOf(false) }
                     val highlighted = focused || selected == index
-                    Text(
-                        text = track,
-                        color = if (highlighted) Color.White else green,
-                        modifier = Modifier
-                            .fillMaxWidth()
+                    Text(entry, color = if (highlighted) Color.White else green,
+                        modifier = Modifier.fillMaxWidth()
                             .onFocusChanged { focused = it.isFocused }
                             .background(if (highlighted) Color(0xFF1749B5) else screen)
                             .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent)
-                            .clickable { selected = index; if (currentPlaylist == null && auth.hasSession() && index < playlists.size) currentPlaylist = playlists[index] }
-                            .padding(10.dp),
-                        fontSize = 19.sp,
-                        fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = FontFamily.Monospace
-                    )
+                            .clickable {
+                                selected = index
+                                if (currentPlaylist == null && auth.hasSession() && index < playlists.size) {
+                                    currentPlaylist = playlists[index]
+                                    selected = 0
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        fontSize = 20.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
                 }
             }
         }
-        Text("MVP 0.3 • SPOTIFY CONNECT • SELECT PLAYLIST AND PRESS PLAY", color = silver, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
     }
 }
