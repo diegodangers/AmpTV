@@ -21,6 +21,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,6 +49,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AmpTVScreen() {
     var selected by remember { mutableIntStateOf(0) }
+    val playlistScroll = rememberLazyListState()
+    val trackScroll = rememberLazyListState()
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
@@ -70,8 +73,8 @@ fun AmpTVScreen() {
             spectrum.start(); fftStatus = spectrum.status
         }
     }
-    LaunchedEffect(auth.hasSession()) {
-        if (auth.hasSession()) while (true) {
+    LaunchedEffect(sessionReady) {
+        if (sessionReady) while (true) {
             try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() } }
             catch (_: Exception) { }
             delay(4000)
@@ -106,6 +109,7 @@ fun AmpTVScreen() {
     var currentPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
+    var sessionReady by remember { mutableStateOf(auth.hasSession()) }
     LaunchedEffect(reload) {
         if (auth.hasSession()) {
             loading = true
@@ -113,8 +117,9 @@ fun AmpTVScreen() {
                 val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     api.profileName() to api.playlists()
                 }
-                authStatus = "Connected: ${loaded.first}"
+                authStatus = "Ready"
                 playlists = loaded.second
+                sessionReady = true
             } catch (e: Exception) {
                 authStatus = "Spotify: ${e.message ?: "Request failed"}"
             } finally { loading = false }
@@ -132,13 +137,18 @@ fun AmpTVScreen() {
             } finally { loading = false }
         }
     }
+    fun playSelectedTrack(index: Int) {
+        val playlist = currentPlaylist ?: return
+        selected = index
+        runPlayback { output -> api.play(playlist.id, output.id, index) }
+    }
     val demoTracks = remember { listOf("Connect Spotify to see your playlists") }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("0.4.1  •  FFT TEST", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("0.5.0  •  CLASSIC", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
         Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
@@ -183,18 +193,9 @@ fun AmpTVScreen() {
                     }
 
                 }
-                Text("${device?.name ?: "Automatic TV output"}  •  $authStatus", color = navy, fontSize = 12.sp, maxLines = 1)
-                if (fftStatus != "Real FFT active") {
-                    Button(onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                            spectrum.start(); fftStatus = spectrum.status
-                        } else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }, modifier = Modifier.height(30.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                        Text("TEST REAL FFT", fontSize = 11.sp)
-                    }
-                }
+                if (authStatus != "Ready") Text(authStatus, color = navy, fontSize = 12.sp, maxLines = 1)
                 if (!auth.hasSession()) {
-                    Button(onClick = { auth.signIn({ authStatus = it }, { reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
+                    Button(onClick = { auth.signIn({ authStatus = it }, { sessionReady = true; reload++ }) }, modifier = Modifier.height(35.dp)) { Text("CONNECT SPOTIFY") }
                 }
             }
         }
@@ -211,8 +212,11 @@ fun AmpTVScreen() {
             if (loading) Text("Loading Spotify…", color = navy)
             val entries = if (currentPlaylist != null) tracks.map { "${it.name} — ${it.artist}" }
                 else if (auth.hasSession()) playlists.map { it.name } else demoTracks
-            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp)) {
-                itemsIndexed(entries) { index, entry ->
+            LazyColumn(Modifier.fillMaxSize().background(screen).padding(6.dp),
+                state = if (currentPlaylist == null) playlistScroll else trackScroll) {
+                itemsIndexed(entries, key = { index, _ ->
+                    if (currentPlaylist == null) "playlist-$index" else "track-${currentPlaylist!!.id}-$index"
+                }) { index, entry ->
                     var focused by remember { mutableStateOf(false) }
                     val highlighted = focused || selected == index
                     Text(entry, color = if (highlighted) Color.White else green,
@@ -221,10 +225,11 @@ fun AmpTVScreen() {
                             .background(if (highlighted) Color(0xFF1749B5) else screen)
                             .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent)
                             .clickable {
-                                selected = index
                                 if (currentPlaylist == null && auth.hasSession() && index < playlists.size) {
                                     currentPlaylist = playlists[index]
                                     selected = 0
+                                } else if (currentPlaylist != null && index < tracks.size) {
+                                    playSelectedTrack(index)
                                 }
                             }
                             .padding(horizontal = 12.dp, vertical = 9.dp),
