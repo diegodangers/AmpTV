@@ -71,6 +71,8 @@ fun AmpTVScreen() {
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             spectrum.start(); fftStatus = spectrum.status
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
     LaunchedEffect(sessionReady) {
