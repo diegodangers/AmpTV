@@ -3,6 +3,7 @@ package io.aviaterra.amptv
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.random.Random
 
 data class SpotifyPlaylist(val id: String, val name: String, val total: Int)
 data class SpotifyTrack(val name: String, val artist: String, val album: String, val uri: String)
@@ -58,6 +59,27 @@ class SpotifyApi(private val auth: SpotifyAuth) {
         } finally { connection.disconnect() }
     }
 
+
+
+    fun randomLikedTrack(): String {
+        val count = request("GET", "me/tracks?limit=1&offset=0").optInt("total")
+        if (count <= 0) throw IllegalStateException("No Liked Songs found")
+        // Spotify's saved-tracks endpoint supports offsets up to 100,000.
+        val offset = Random.nextInt(count.coerceAtMost(100001))
+        val items = request("GET", "me/tracks?limit=1&offset=$offset").optJSONArray("items")
+        val uri = items?.optJSONObject(0)?.optJSONObject("track")?.optString("uri").orEmpty()
+        if (!uri.startsWith("spotify:track:")) throw IllegalStateException("Selected saved track unavailable")
+        return uri
+    }
+
+    fun playTrack(deviceId: String, uri: String) {
+        request("PUT", "me/player/play?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}",
+            JSONObject().put("uris", org.json.JSONArray().put(uri)).toString())
+    }
+
+    fun enqueueTrack(uri: String, deviceId: String) {
+        request("POST", "me/player/queue?uri=${java.net.URLEncoder.encode(uri, "UTF-8")}&device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+    }
 
     fun playbackSession(): SpotifyPlaybackSession? {
         val connection = URL("https://api.spotify.com/v1/me/player").openConnection() as HttpURLConnection
