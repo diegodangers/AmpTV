@@ -82,7 +82,7 @@ class SpotifyAuth(private val context: Context) {
 
     private fun acceptTokens(obj: JSONObject) {
         token = obj.getString("access_token")
-        refresh = obj.optString("refresh_token").ifBlank { refresh }
+        refresh = obj.optString("refresh_token").takeIf { it.isNotBlank() } ?: refresh
         expiry = System.currentTimeMillis() + obj.optLong("expires_in", 3600) * 1000L
         save()
     }
