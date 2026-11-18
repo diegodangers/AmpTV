@@ -7,6 +7,8 @@ import java.net.URL
 data class SpotifyPlaylist(val id: String, val name: String, val total: Int)
 data class SpotifyTrack(val name: String, val artist: String, val album: String)
 
+data class NowPlaying(val title: String, val artist: String, val progressMs: Long, val durationMs: Long, val playing: Boolean)
+
 data class SpotifyDevice(val id: String, val name: String, val active: Boolean)
 
 class SpotifyApi(private val auth: SpotifyAuth) {
@@ -29,6 +31,26 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                 throw IllegalStateException("Spotify HTTP $status" + if (message.isNotBlank()) ": ${message.take(120)}" else "")
             }
             return if (status == 204) JSONObject() else JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        } finally { connection.disconnect() }
+    }
+
+    fun nowPlaying(): NowPlaying? {
+        val connection = URL("https://api.spotify.com/v1/me/player/currently-playing").openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 12000
+            connection.readTimeout = 12000
+            connection.setRequestProperty("Authorization", "Bearer ${auth.validToken()}")
+            val status = connection.responseCode
+            if (status == 204) return null
+            if (status !in 200..299) throw IllegalStateException("Playback status HTTP $status")
+            val data = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val item = data.optJSONObject("item") ?: return null
+            val artists = item.optJSONArray("artists")
+            val artist = (0 until (artists?.length() ?: 0)).mapNotNull {
+                artists?.optJSONObject(it)?.optString("name")
+            }.joinToString(", ")
+            return NowPlaying(item.optString("name", "Unknown track"), artist,
+                data.optLong("progress_ms"), item.optLong("duration_ms"), data.optBoolean("is_playing"))
         } finally { connection.disconnect() }
     }
 
