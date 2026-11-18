@@ -1,6 +1,7 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
@@ -71,6 +72,11 @@ fun AmpTVScreen() {
     val context = LocalContext.current
     val auth = remember { SpotifyAuth(context.applicationContext) }
     val api = remember { SpotifyApi(auth) }
+    val lyricsApi = remember { LyricsApi() }
+    var lyrics by remember { mutableStateOf<LyricsResult?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
+    var lyricError by remember { mutableStateOf(false) }
+    var playbackSampleTime by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val scope = rememberCoroutineScope()
     val jamImage = remember { jamQr(TEST_JAM_URL).asImageBitmap() }
     var devices by remember { mutableStateOf<List<SpotifyDevice>>(emptyList()) }
@@ -97,12 +103,25 @@ fun AmpTVScreen() {
     }
     LaunchedEffect(sessionReady) {
         if (sessionReady) while (true) {
-            try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() } }
+            try { nowPlaying = withContext(Dispatchers.IO) { api.nowPlaying() }; playbackSampleTime = SystemClock.elapsedRealtime() }
             catch (_: Exception) { }
             delay(4000)
         }
     }
+    LaunchedEffect(nowPlaying?.title, nowPlaying?.artist, nowPlaying?.album, nowPlaying?.durationMs) {
+        val track = nowPlaying
+        lyrics = null
+        lyricError = false
+        if (track != null) {
+            lyricsLoading = true
+            try { lyrics = withContext(Dispatchers.IO) { lyricsApi.lookup(track) } }
+            catch (_: Exception) { lyricError = true }
+            finally { lyricsLoading = false }
+        }
+    }
     LaunchedEffect(Unit) { while (true) { delay(110); visualTick++ } }
+    val livePosition = (nowPlaying?.progressMs ?: 0L) +
+        if (nowPlaying?.playing == true) (SystemClock.elapsedRealtime() - playbackSampleTime).coerceAtLeast(0L) else 0L
     fun runPlayback(action: (SpotifyDevice) -> Unit) {
         if (playbackBusy) return
         val listState = if (currentPlaylist != null) trackScroll else playlistScroll
@@ -181,7 +200,9 @@ fun AmpTVScreen() {
             Spacer(Modifier.weight(1f))
             Text("0.5.2  •  NAV FIX", color = silver, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
         }
-        Row(Modifier.fillMaxWidth().height(108.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().height(152.dp).border(2.dp, Color.White).background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().background(screen).padding(10.dp), verticalArrangement = Arrangement.Center) {
                 Text(nowPlaying?.title ?: "AMP TV  --  SPOTIFY", color = green, fontFamily = FontFamily.Monospace, fontSize = 17.sp, maxLines = 1)
                 Text(nowPlaying?.artist ?: playbackStatus, color = green, fontFamily = FontFamily.Monospace, fontSize = 12.sp, maxLines = 1)
@@ -232,6 +253,39 @@ fun AmpTVScreen() {
             }
         }
         Column(Modifier.fillMaxWidth().weight(1f).border(2.dp, Color.White).background(silver).padding(6.dp)) {
+            Text("LYRICS  •  LRCLIB", modifier = Modifier.fillMaxWidth().background(navy).padding(6.dp),
+                color = Color.White, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+            val lines = lyrics?.lines.orEmpty()
+            val active = lines.indexOfLast { it.timeMs <= livePosition }
+            val lyricScroll = rememberLazyListState()
+            LaunchedEffect(active, lines.size) {
+                if (active >= 0) lyricScroll.animateScrollToItem((active - 2).coerceAtLeast(0))
+            }
+            if (lines.isNotEmpty()) {
+                LazyColumn(Modifier.fillMaxSize().background(screen).padding(8.dp), state = lyricScroll,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(lines) { index, line ->
+                        Text(line.text.ifBlank { "♪" }, color = if (index == active) Color.White else green.copy(alpha = 0.55f),
+                            fontSize = if (index == active) 21.sp else 17.sp,
+                            fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = FontFamily.Monospace)
+                    }
+                }
+            } else {
+                val message = when {
+                    lyricsLoading -> "Finding lyrics…"
+                    lyricError -> "Lyrics service unavailable"
+                    lyrics?.instrumental == true -> "Instrumental"
+                    !lyrics?.plain.isNullOrBlank() -> lyrics!!.plain!!
+                    nowPlaying == null -> "Play a song to see lyrics"
+                    else -> "Lyrics unavailable"
+                }
+                Text(message, Modifier.fillMaxSize().background(screen).padding(14.dp),
+                    color = green, fontSize = 17.sp, fontFamily = FontFamily.Monospace)
+            }
+        }
+            }
+        Column(Modifier.weight(1.25f).fillMaxHeight().border(2.dp, Color.White).background(silver).padding(6.dp)) {
             Row(Modifier.fillMaxWidth().background(navy).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (currentPlaylist == null) "PLAYLISTS  (${playlists.size})" else "TRACKS  •  ${currentPlaylist!!.name}",
                     color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1,
@@ -268,6 +322,7 @@ fun AmpTVScreen() {
                         fontSize = 20.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
                 }
             }
-        }
+        }        }
+
     }
 }
