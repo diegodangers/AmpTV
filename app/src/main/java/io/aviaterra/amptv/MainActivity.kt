@@ -1,6 +1,7 @@
 package io.aviaterra.amptv
 
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import android.os.SystemClock
 import android.view.WindowManager
 import android.graphics.Bitmap
@@ -92,7 +93,9 @@ fun AmpTVScreen() {
     var visDecay by remember { mutableFloatStateOf(visPrefs.getFloat("decay", 0.65f)) }
     var visPeaks by remember { mutableStateOf(visPrefs.getBoolean("peaks", true)) }
     var visColor by remember { mutableStateOf(visPrefs.getString("color", "green") ?: "green") }
-    var showVisSettings by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var settingsSection by remember { mutableStateOf("Visualizer") }
+    BackHandler(settingsOpen) { settingsOpen = false }
     val spectrum = remember { AudioSpectrum() }
     SideEffect {
         spectrum.bandCount = visBands
@@ -240,46 +243,103 @@ fun AmpTVScreen() {
         }
     }
 
-    if (showVisSettings) {
-        AlertDialog(
-            onDismissRequest = { showVisSettings = false },
-            title = { Text("Visualizer Settings") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Frequency bands: $visBands")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(19, 28, 38, 64).forEach { n ->
-                            Button(onClick = { visBands = n; visPrefs.edit().putInt("bands", n).apply() },
-                                contentPadding = PaddingValues(5.dp)) { Text("$n") }
-                        }
-                    }
-                    Text("Sensitivity: ${(visSensitivity * 100).toInt()}%")
-                    Slider(value = visSensitivity, onValueChange = {
-                        visSensitivity = it; visPrefs.edit().putFloat("sensitivity", it).apply()
-                    }, valueRange = 0.3f..2f)
-                    Text("Decay: ${(visDecay * 100).toInt()}%")
-                    Slider(value = visDecay, onValueChange = {
-                        visDecay = it; visPrefs.edit().putFloat("decay", it).apply()
-                    }, valueRange = 0f..0.95f)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = visPeaks, onCheckedChange = {
-                            visPeaks = it; visPrefs.edit().putBoolean("peaks", it).apply()
-                        })
-                        Text("Peak indicators")
-                    }
-                    Text("Colors")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("green", "classic", "blue").forEach { color ->
-                            Button(onClick = { visColor = color; visPrefs.edit().putString("color", color).apply() },
-                                contentPadding = PaddingValues(5.dp)) { Text(color.uppercase(), fontSize = 11.sp) }
+    if (settingsOpen) {
+        Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp)) {
+            Row(Modifier.fillMaxWidth().background(navy).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("AMP TV  •  PREFERENCES", color = Color.White, fontSize = 23.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.weight(1f))
+                Button(onClick = { settingsOpen = false }) { Text("BACK TO PLAYER") }
+            }
+            Row(Modifier.fillMaxSize().background(silver).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.width(210.dp).fillMaxHeight().background(Color(0xFF9299A5)).padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Visualizer", "Playback", "Spotify", "Lyrics", "Appearance", "Diagnostics").forEach { name ->
+                        Button(onClick = { settingsSection = name }, modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (settingsSection == name) navy else silver,
+                                contentColor = if (settingsSection == name) Color.White else Color.Black)) {
+                            Text(name.uppercase(), fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
-            },
-            confirmButton = { Button(onClick = { showVisSettings = false }) { Text("DONE") } }
-        )
-    }
-
+                Column(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFE1E3E7)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(settingsSection.uppercase(), color = navy, fontSize = 22.sp, fontFamily = FontFamily.Monospace)
+                    HorizontalDivider(color = Color.Gray)
+                    when (settingsSection) {
+                        "Visualizer" -> {
+                            Text("FREQUENCY BANDS: $visBands", color = navy)
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                listOf(19, 28, 38, 64).forEach { n ->
+                                    Button(onClick = { visBands = n; visPrefs.edit().putInt("bands", n).apply() }) { Text("$n") }
+                                }
+                            }
+                            Text("SENSITIVITY: ${(visSensitivity * 100).toInt()}%", color = navy)
+                            Slider(value = visSensitivity, onValueChange = {
+                                visSensitivity = it; visPrefs.edit().putFloat("sensitivity", it).apply()
+                            }, valueRange = 0.3f..2f)
+                            Text("DECAY: ${(visDecay * 100).toInt()}%", color = navy)
+                            Slider(value = visDecay, onValueChange = {
+                                visDecay = it; visPrefs.edit().putFloat("decay", it).apply()
+                            }, valueRange = 0f..0.95f)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = visPeaks, onCheckedChange = {
+                                    visPeaks = it; visPrefs.edit().putBoolean("peaks", it).apply()
+                                })
+                                Text("PEAK INDICATORS", color = navy)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                listOf("green", "classic", "blue").forEach { color ->
+                                    Button(onClick = { visColor = color; visPrefs.edit().putString("color", color).apply() }) {
+                                        Text(color.uppercase())
+                                    }
+                                }
+                            }
+                        }
+                        "Playback" -> {
+                            Text("SESSION DETECTION: 4 SECONDS", color = navy)
+                            Text("QUEUE REFRESH: 12 SECONDS", color = navy)
+                            Text("DEFAULT: SHUFFLE LIKED SONGS (MANUAL)", color = navy)
+                            Text("QUEUE IS ALWAYS THE PRIMARY TRACK LIST", color = navy)
+                        }
+                        "Spotify" -> {
+                            Text(if (sessionReady) "ACCOUNT CONNECTED" else "ACCOUNT DISCONNECTED", color = navy)
+                            Text("DEVICE: ${activeSession?.device?.name ?: "NONE"}", color = navy)
+                            Button(onClick = { transferToTv(); settingsOpen = false }, enabled = sessionReady && !playbackBusy) {
+                                Text("TRANSFER TO TV")
+                            }
+                            Button(onClick = {
+                                auth.signOut(); sessionReady = false
+                                auth.signIn({ authStatus = it }, { sessionReady = true; reload++ })
+                            }) { Text("REAUTHORIZE SPOTIFY") }
+                            Text(authStatus, color = navy)
+                        }
+                        "Lyrics" -> {
+                            Text("LRCLIB V1 • PERSISTENT CACHE", color = navy)
+                            Button(onClick = {
+                                java.io.File(context.cacheDir, "lrclib").listFiles()?.forEach { it.delete() }
+                            }) { Text("CLEAR LYRICS CACHE") }
+                            Text("SYNC: SPOTIFY PLAYBACK POSITION", color = navy)
+                        }
+                        "Appearance" -> {
+                            Text("CLASSIC WINAMP 2.X", color = navy)
+                            Text("SILVER CHROME • NAVY TITLE BARS", color = navy)
+                            Text("GREEN LED DISPLAY • TV-SIZED CONTROLS", color = navy)
+                        }
+                        "Diagnostics" -> {
+                            Text("VERSION: 0.6 DEVELOPMENT", color = navy)
+                            Text("FFT: $fftStatus", color = navy)
+                            Text("SPOTIFY: $authStatus", color = navy)
+                            Text("SESSION: $queueStatus", color = navy)
+                            Text("QUEUE TRACKS: ${queue.size}", color = navy)
+                            Text("PLAYBACK: $playbackStatus", color = navy)
+                        }
+                    }
+                }
+            }
+        }
+    } else {
     Column(Modifier.fillMaxSize().background(Color(0xFF343434)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().background(navy).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AMP TV", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -334,10 +394,10 @@ fun AmpTVScreen() {
                     }
 
                 }
-                Button(onClick = { showVisSettings = !showVisSettings },
+                Button(onClick = { settingsOpen = true },
                     modifier = Modifier.height(30.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Text("VIS", fontSize = 12.sp)
+                    Text("SETTINGS", fontSize = 12.sp)
                 }
                 if (authStatus != "Ready") Text(authStatus, color = navy, fontSize = 12.sp, maxLines = 1)
                 if (!auth.hasSession()) {
@@ -417,5 +477,6 @@ fun AmpTVScreen() {
         }
 
         }
+    }
     }
 }
